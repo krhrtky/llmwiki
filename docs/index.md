@@ -2,6 +2,8 @@
 
 この `docs/` は LLMWiki 実装の Source of Truth である。実装者と Agent は、コードを書く前にここを参照し、未決事項を推測で埋めない。
 
+Repository root の `AGENTS.md` は Codex 向けの入口であり、詳細仕様はこの `docs/` に集約する。
+
 ## 読む順番
 
 1. [glossary.md](./glossary.md) で用語を揃える。
