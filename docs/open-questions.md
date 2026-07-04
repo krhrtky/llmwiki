@@ -6,7 +6,6 @@
 
 - operation-aware access control の評価順序、優先順位、競合解決。
 - access decision の追加監査ログ項目。
-- typed relation を補助 metadata として保持する場合の schema と保存場所。
 - redaction scan の実装方式。出力契約は workflow/access 仕様で固定し、ルールベース、LLM、DLP サービス、または組み合わせのどれを初期実装に採るかを後続で決める。
 - 本文意味比較による contradiction / stale 検出の採用可否と実装方式。
 - source 更新に基づく stale claim 検出の metadata contract。
@@ -16,6 +15,7 @@
 - M3 では CLI を単一 binary `llmwiki` とし、内部関数 API を正本にする。詳細は [ADR 013](./adr/013-finalize-m3-cli-contract.md)。
 - M3 では metadata store と workflow state store に page 隣接 sidecar (`page.llmwiki.yaml`, `page.workflow.yaml`) を採用する。詳細は [ADR 013](./adr/013-finalize-m3-cli-contract.md)。
 - M3 では CLI/API output の正式 transport を JSON のみに固定し、Markdown report は派生表示として扱う。詳細は [ADR 013](./adr/013-finalize-m3-cli-contract.md)。
+- typed relation の補助 metadata は `page.llmwiki.yaml` に保存する。Markdown link は graph edge の正本であり、typed relation は補助 metadata として扱う。詳細は [ADR 015](./adr/015-store-typed-relations-in-llmwiki-sidecar.md)。
 
 ## ユーザー判断待ち
 

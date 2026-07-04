@@ -42,11 +42,33 @@ M5 lint は proposal workflow state の状態 field を `lifecycle` として読
 | `graph.broken_link` | broken link | Markdown link の target が bundle 内に存在しない | source file、line、target |
 | `graph.orphan_page` | orphan page | `index.md` と他 page から参照されない wiki page | page、候補 parent |
 | `graph.missing_required_link` | 重要概念の欠落 | requirement、ADR、spec が required link を持たない | page、期待 link 種別 |
-| `graph.unknown_relation` | unknown relation | frontmatter または inline metadata の relation が初期語彙にない。Markdown link は正本であり、この finding は補助 relation にのみ適用する | page、relation |
-| `graph.ambiguous_relation` | ambiguous relation | 同一 source/target 間に矛盾する relation がある | source、target、relations |
-| `graph.superseded_without_target` | superseded target 欠落 | `supersedes` または `superseded_by` が target を持たない | page、relation |
+| `graph.unknown_relation` | unknown relation | `*.llmwiki.yaml` の relation が初期語彙にない。Markdown link は正本であり、この finding は補助 relation にのみ適用する | page、relation |
+| `graph.ambiguous_relation` | ambiguous relation | `*.llmwiki.yaml` の同一 source/target 間に複数の relation type がある | source、target、relations |
+| `graph.superseded_without_target` | superseded target 欠落 | `*.llmwiki.yaml` の `supersedes` または `superseded_by` が target を持たない | page、relation |
 
 初期 relation vocabulary は Requirement 011 の一覧を採用する。typed relation は補助 metadata であり、lint は Markdown link を graph edge の正本として扱う。
+
+### typed relation sidecar schema
+
+typed relation の補助 metadata は `*.llmwiki.yaml` に保存する。最小 schema は次の構造に固定する。
+
+```yaml
+owner: string
+reviewer: string
+risk_owner: string
+claims:
+  - claim_id: string
+    review_after: YYYY-MM-DD
+    # optional
+    value: string
+relations:
+  - type: depends_on
+    target: docs/example.md
+```
+
+`value` は optional とし、top-level `relations[]` は `type` と `target` のみを持つ。lint は top-level `relations[]` を relation 入力として読み、frontmatter、本文、`page.workflow.yaml`、または `relations[]` 以外の metadata は graph relation 判定の入力にしない。
+
+`graph.unknown_relation`、`graph.ambiguous_relation`、`graph.superseded_without_target` はこの sidecar relation を入力にする。`docs.contradiction` も explicit `contradicts` relation をこの sidecar から読む。
 
 ### `graph.missing_required_link` の required link matrix
 
@@ -70,7 +92,7 @@ required link は指定 section 内の Markdown link のみを数える。本文
 | `docs.missing_citation` | missing citation | published page に `## Citations` section がない、または claim を支える段落末尾に citation link がない | page、section |
 | `docs.stale_claim` | stale claim | `review_after` を過ぎた structured claim | page、claim id、date |
 | `docs.duplicate_concept` | duplicated concept | 同一 normalized title または alias が複数 page に存在する | pages、normalized key |
-| `docs.contradiction` | contradiction | `contradicts` relation または同一 claim id の不一致 | pages、claim ids |
+| `docs.contradiction` | contradiction | `*.llmwiki.yaml` の `contradicts` relation または同一 claim id の不一致 | pages、claim ids |
 | `docs.index_log_drift` | index/log drift | page が追加・削除されたが `index.md` または `log.md` に反映されていない | page、expected update |
 | `docs.unknown_top_level_key` | unknown top-level key | frontmatter の top-level key が既定 schema になく、`llmwiki` namespace 外にある。read は許容し、lint は warning とする | page、key |
 
@@ -193,7 +215,6 @@ owner、reviewer、stale、duplicate、contradiction は初期 CI では warning
 
 ## 未決事項
 
-- typed relation schema の保存場所。
 - redaction scan の実装方式。
 - 本文意味比較による contradiction / stale 検出の実装方式。
 - source 更新に基づく stale claim 検出の metadata contract。
@@ -210,3 +231,4 @@ owner、reviewer、stale、duplicate、contradiction は初期 CI では warning
 - [ADR 010: Use Index and Log for Progressive Disclosure](../adr/010-use-index-and-log-for-progressive-disclosure.md)
 - [ADR 011: Start with File and CLI First](../adr/011-start-with-file-and-cli-first.md)
 - [ADR 014: Finalize M5 Maintenance Contract](../adr/014-finalize-m5-maintenance-contract.md)
+- [ADR 015: Store Typed Relations in LLMWiki Sidecar](../adr/015-store-typed-relations-in-llmwiki-sidecar.md)

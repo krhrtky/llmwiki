@@ -12,7 +12,7 @@ link がない wiki は page の集合に留まり、Agent が依存、制約、
 
 - page 間の link と relation を保守する。
 - broken link、orphan page、重要概念の欠落を検出する。
-- typed relation の扱いは後続 ADR に残す。
+- typed relation の補助 metadata は ADR 015 に従い `*.llmwiki.yaml` に保存する。
 
 ## Initial Relation Vocabulary
 
@@ -25,6 +25,7 @@ link がない wiki は page の集合に留まり、Agent が依存、制約、
 - `decided_by`
 - `contradicts`
 - `supersedes`
+- `superseded_by`
 - `related_to`
 - `example_of`
 - `owned_by`
@@ -34,8 +35,9 @@ link がない wiki は page の集合に留まり、Agent が依存、制約、
 
 - Markdown link が graph edge として扱われる。
 - relation vocabulary の初期候補がある。
-- typed relation の保存方式は未決事項として分離されている。
+- typed relation の保存方式は ADR 015 に記録されている。
 
 ## Related ADRs
 
 - [ADR 010](../adr/010-use-index-and-log-for-progressive-disclosure.md)
+- [ADR 015](../adr/015-store-typed-relations-in-llmwiki-sidecar.md)

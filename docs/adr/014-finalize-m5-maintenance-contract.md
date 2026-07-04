@@ -40,7 +40,6 @@ deterministic lint は file-first repository で再現しやすく、CLI automat
 
 ## Open Questions
 
-- typed relation schema の保存場所。
 - redaction scan の実装方式。
 - 本文意味比較による contradiction / stale 検出の採用可否と実装方式。
 - source 更新に基づく stale claim 検出の metadata contract。
