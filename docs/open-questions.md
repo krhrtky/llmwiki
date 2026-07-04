@@ -6,7 +6,7 @@
 
 - operation-aware access control の policy schema と評価順序。
 - access decision の監査ログ項目。
-- graph edge を Markdown link の周辺文脈から推定するか、frontmatter に typed relation として保持するか。
+- typed relation を補助 metadata として保持する場合の schema と保存場所。
 - CLI を単一 binary にするか、複数 subcommand package に分けるか。
 - metadata store と workflow state store に何を採用するか。
 - redaction scan の実装方式。ルールベース、LLM、DLP サービス、または組み合わせ。
@@ -22,10 +22,6 @@
 ## 実装時に検証する事項
 
 - OKF v0.1 Draft の仕様更新有無。
-- `index.md` に frontmatter を持たせる場合の OKF conformance 影響。
-- Markdown parser が未知 frontmatter key を round-trip できるか。
 - 日本語本文と英語識別子が検索・graph 生成に与える影響。
-- `index.md` と `log.md` に frontmatter を許可する場合の parser/lint 影響。
-- citation の最小粒度を paragraph、claim sentence、section のどれに固定するか。
 - claim 抽出方式と stale 判定の単位。
 - contradiction の自動検出対象を metadata に限定するか、本文要約比較まで広げるか。

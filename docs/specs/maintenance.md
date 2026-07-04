@@ -30,28 +30,29 @@ lint は既定で修正を行わない。自動修正を許可する場合でも
 | `graph.broken_link` | broken link | Markdown link の target が bundle 内に存在しない | source file、line、target |
 | `graph.orphan_page` | orphan page | `index.md` と他 page から参照されない wiki page | page、候補 parent |
 | `graph.missing_required_link` | 重要概念の欠落 | requirement、ADR、spec が関連文書を参照していない | page、期待 link 種別 |
-| `graph.unknown_relation` | unknown relation | frontmatter または inline metadata の relation が初期語彙にない | page、relation |
+| `graph.unknown_relation` | unknown relation | frontmatter または inline metadata の relation が初期語彙にない。Markdown link は正本であり、この finding は補助 relation にのみ適用する | page、relation |
 | `graph.ambiguous_relation` | ambiguous relation | 同一 source/target 間に矛盾する relation がある | source、target、relations |
 | `graph.superseded_without_target` | superseded target 欠落 | `supersedes` または `superseded_by` が target を持たない | page、relation |
 
-初期 relation vocabulary は Requirement 011 の一覧を採用する。typed relation の保存方式は未決事項であり、lint は Markdown link を graph edge として扱う。
+初期 relation vocabulary は Requirement 011 の一覧を採用する。typed relation は補助 metadata であり、lint は Markdown link を graph edge の正本として扱う。
 
 ## docs lint target
 
 | ID | Target | Detection | Output |
 | --- | --- | --- | --- |
-| `docs.missing_frontmatter` | missing frontmatter | wiki page が required frontmatter を持たない | page、missing keys |
-| `docs.invalid_scope` | invalid scope | scope が `personal`、`team`、`org` 以外 | page、scope |
+| `docs.missing_frontmatter` | missing frontmatter | reserved files を除く wiki page が required frontmatter を持たない | page、missing keys |
+| `docs.invalid_scope` | invalid scope | concept document の scope が `personal`、`team`、`org` 以外 | page、scope |
 | `docs.invalid_lifecycle` | invalid lifecycle state | lifecycle が定義済み state 以外 | page、state |
 | `docs.missing_owner` | missing owner | published または org candidate の page に owner がない | page |
 | `docs.missing_reviewer` | missing reviewer for org policy | org scope または org publish candidate に reviewer がない | page |
-| `docs.missing_citation` | missing citation | claim を持つ wiki page に citation section または citation metadata がない | page、section |
+| `docs.missing_citation` | missing citation | claim を持つ wiki page に `## Citations` section がない、または claim を支える段落末尾に citation link がない | page、section |
 | `docs.stale_claim` | stale claim | `review_after` を過ぎた claim または source が更新された claim | page、claim id、date |
 | `docs.duplicate_concept` | duplicated concept | 同一 normalized title または alias が複数 page に存在する | pages、normalized key |
 | `docs.contradiction` | contradiction | `contradicts` relation または同一 claim id の不一致 | pages、claim ids |
 | `docs.index_log_drift` | index/log drift | page が追加・削除されたが `index.md` または `log.md` に反映されていない | page、expected update |
+| `docs.unknown_top_level_key` | unknown top-level key | frontmatter の top-level key が既定 schema になく、`llmwiki` namespace 外にある。read は許容し、lint は warning とする | page、key |
 
-`claim` の機械抽出方式は未決事項である。初期実装では frontmatter の claim metadata、見出し単位の explicit claim id、または human-maintained citation section を対象にする。
+`claim` の機械抽出方式は未決事項である。初期実装では frontmatter の claim metadata、見出し単位の explicit claim id、または human-maintained citation section を手がかりにし、M2 Format で固定した段落単位の citation 表現を検査する。
 
 ## gardening Agent Skill
 
@@ -96,12 +97,13 @@ CI に載せる場合の初期 gate は以下に限定する。
 - `docs.invalid_lifecycle` は `error`。
 - `docs.missing_reviewer` は org publish candidate だけ `error`。
 - `docs.missing_citation` は published page だけ `error`。
+- `docs.unknown_top_level_key` は `warning`。
 
 `stale_claim`、`duplicate_concept`、`contradiction` は初期 gate では `warning` とし、review queue に送る。これは誤検出時に正しい知識更新を止めないためである。
 
 ## 未決事項
 
-- graph edge を Markdown link の周辺文脈から推定するか、frontmatter に typed relation として保持するか。
+- typed relation を補助 metadata として保持する場合の schema と保存場所。
 - redaction scan の実装方式。
 - claim 抽出方式と stale 判定の単位。
 - contradiction の自動検出対象を metadata に限定するか、本文要約比較まで広げるか。
