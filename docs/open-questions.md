@@ -7,11 +7,14 @@
 - operation-aware access control の policy schema と評価順序。
 - access decision の監査ログ項目。
 - typed relation を補助 metadata として保持する場合の schema と保存場所。
-- CLI を単一 binary にするか、複数 subcommand package に分けるか。
-- metadata store と workflow state store に何を採用するか。
 - redaction scan の実装方式。ルールベース、LLM、DLP サービス、または組み合わせ。
 - `hold` を lifecycle state に昇格させるか、policy/review decision の結果に留めるか。
-- CLI/API output の transport 表現を JSON のみに固定するか、Markdown report も正式形式に含めるか。
+
+## 解決済み
+
+- M3 では CLI を単一 binary `llmwiki` とし、内部関数 API を正本にする。詳細は [ADR 013](./adr/013-finalize-m3-cli-contract.md)。
+- M3 では metadata store と workflow state store に page 隣接 sidecar (`page.llmwiki.yaml`, `page.workflow.yaml`) を採用する。詳細は [ADR 013](./adr/013-finalize-m3-cli-contract.md)。
+- M3 では CLI/API output の正式 transport を JSON のみに固定し、Markdown report は派生表示として扱う。詳細は [ADR 013](./adr/013-finalize-m3-cli-contract.md)。
 
 ## ユーザー判断待ち
 

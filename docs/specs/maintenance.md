@@ -70,20 +70,26 @@ gardening は定期的に lint result を読み、修正案または判断依頼
 
 ## report format
 
-lint report は Markdown と JSON の両方で表現できる構造にする。
+lint report の正式 output contract は JSON とする。Markdown report を出す場合でも、同じ JSON 構造から派生生成する。
 
-```yaml
-lint_report:
-  generated_at: "2026-07-04T00:00:00Z"
-  bundle: "."
-  findings:
-    - id: "docs.missing_citation"
-      severity: "error"
-      path: "docs/example.md"
-      line: 42
-      message: "citation section is missing"
-      requires_human_decision: true
-      suggested_action: "source_curator が根拠 source を選定する"
+```json
+{
+  "lint_report": {
+    "generated_at": "2026-07-04T00:00:00Z",
+    "bundle": ".",
+    "findings": [
+      {
+        "id": "docs.missing_citation",
+        "severity": "error",
+        "path": "docs/example.md",
+        "line": 42,
+        "message": "citation section is missing",
+        "requires_human_decision": true,
+        "suggested_action": "source_curator が根拠 source を選定する"
+      }
+    ]
+  }
+}
 ```
 
 `severity` は `error`、`warning`、`info` の 3 値とする。`requires_human_decision: true` の finding は自動修正対象外である。

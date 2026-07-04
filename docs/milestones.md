@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | M1 SoT | Complete | `docs/index.md`、`docs/glossary.md`、`docs/requirements/`、`docs/adr/`、`docs/open-questions.md` |
 | M2 Format | Complete | `docs/specs/format-profile.md` |
-| M3 CLI/API | Complete | `docs/specs/cli-api.md` |
+| M3 CLI/API | Complete | `docs/specs/cli-api.md`、`docs/adr/013-finalize-m3-cli-contract.md` |
 | M4 Workflow | Complete | `docs/specs/workflow-and-access.md` |
 | M5 Maintenance | Complete | `docs/specs/maintenance.md` |
 
@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | M1 SoT | 001, 002, 003, 017, 020 | SoT entrypoint、glossary、requirements index、ADR index、open questions |
 | M2 Format | 004, 009, 010, 011 | scope、OKF-compatible Markdown、citation、graph link rule |
-| M3 CLI/API | 012, 013, 014, 015 | Agent Skill 接続、CLI/API command contract、storage boundary、query/filing |
+| M3 CLI/API | 012, 013, 014, 015 | Agent Skill 接続、CLI/API command contract、storage boundary、query/filing、JSON output contract、sidecar layout |
 | M4 Workflow | 005, 006, 007, 008, 018 | lifecycle、propose、redaction gate、operation-aware access、review/ownership |
 | M5 Maintenance | 011, 016, 017, 020 | graph lint、docs lint、gardening Agent Skill、CI gate 候補 |
 
@@ -30,7 +30,7 @@
 | --- | --- |
 | M1 SoT | ADR 001, ADR 010 |
 | M2 Format | ADR 006, ADR 007, ADR 009, ADR 010 |
-| M3 CLI/API | ADR 008, ADR 011 |
+| M3 CLI/API | ADR 008, ADR 011, ADR 013 |
 | M4 Workflow | ADR 002, ADR 003, ADR 004, ADR 005, ADR 012 |
 | M5 Maintenance | ADR 001, ADR 010, ADR 011 |
 
