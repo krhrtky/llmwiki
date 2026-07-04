@@ -10,7 +10,7 @@ Accepted
 
 ## Decision
 
-LLMWiki は operation-aware access control を採用する。初期 docs では概念モデルまでを固定し、policy schema と評価順序は後続 ADR で決める。
+LLMWiki は operation-aware access control を採用する。初期 docs では concept model と policy object / decision log の最小契約項目までを固定し、認可エンジンの完全な policy schema、評価順序、競合解決は後続 ADR で決める。
 
 ## Alternatives
 

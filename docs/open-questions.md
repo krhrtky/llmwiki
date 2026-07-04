@@ -4,11 +4,10 @@
 
 ## 後続 ADR 候補
 
-- operation-aware access control の policy schema と評価順序。
-- access decision の監査ログ項目。
+- operation-aware access control の評価順序、優先順位、競合解決。
+- access decision の追加監査ログ項目。
 - typed relation を補助 metadata として保持する場合の schema と保存場所。
-- redaction scan の実装方式。ルールベース、LLM、DLP サービス、または組み合わせ。
-- `hold` を lifecycle state に昇格させるか、policy/review decision の結果に留めるか。
+- redaction scan の実装方式。出力契約は M4 で固定し、ルールベース、LLM、DLP サービス、または組み合わせのどれを初期実装に採るかを後続で決める。
 
 ## 解決済み
 
@@ -19,8 +18,13 @@
 ## ユーザー判断待ち
 
 - 初期ユースケースを個人 wiki、チーム wiki、問い合わせ管理、またはハーネスエンジニアリング基盤のどれに寄せるか。
-- `org` publish の承認者を誰にするか。
 - 秘匿情報の最終分類を社内ポリシーと合わせるか、LLMWiki 独自の初期分類で始めるか。
+
+## 解決済み（M4）
+
+- `hold` は lifecycle state に昇格させず、policy/review decision として `*.workflow.yaml` に記録する。decision log は監査用の派生記録とする。
+- operation-aware access control は policy object と decision log の最小項目まで M4 で固定し、評価順序と競合解決は後続 ADR に残す。
+- `org` publish の承認者は human role とし、基本は `domain_owner`、sensitive category が残る場合は該当 `risk_owner` を追加承認者とする。
 
 ## 実装時に検証する事項
 
