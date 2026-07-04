@@ -1,4 +1,4 @@
-# Open Questions
+# 未決事項
 
 このファイルは未決事項を集約する。実装者は未決事項を推測で埋めず、実装判断が分岐する場合はユーザー判断または追加 ADR を作成する。
 
@@ -10,6 +10,8 @@
 - CLI を単一 binary にするか、複数 subcommand package に分けるか。
 - metadata store と workflow state store に何を採用するか。
 - redaction scan の実装方式。ルールベース、LLM、DLP サービス、または組み合わせ。
+- `hold` を lifecycle state に昇格させるか、policy/review decision の結果に留めるか。
+- CLI/API output の transport 表現を JSON のみに固定するか、Markdown report も正式形式に含めるか。
 
 ## ユーザー判断待ち
 
@@ -23,3 +25,7 @@
 - `index.md` に frontmatter を持たせる場合の OKF conformance 影響。
 - Markdown parser が未知 frontmatter key を round-trip できるか。
 - 日本語本文と英語識別子が検索・graph 生成に与える影響。
+- `index.md` と `log.md` に frontmatter を許可する場合の parser/lint 影響。
+- citation の最小粒度を paragraph、claim sentence、section のどれに固定するか。
+- claim 抽出方式と stale 判定の単位。
+- contradiction の自動検出対象を metadata に限定するか、本文要約比較まで広げるか。
