@@ -10,7 +10,7 @@
 | M2 Format | Complete | `docs/specs/format-profile.md` |
 | M3 CLI/API | Complete | `docs/specs/cli-api.md`、`docs/adr/013-finalize-m3-cli-contract.md` |
 | M4 Workflow | Complete | `docs/specs/workflow-and-access.md` |
-| M5 Maintenance | Complete | `docs/specs/maintenance.md` |
+| M5 Maintenance | Complete | `docs/specs/maintenance.md`、`docs/adr/014-finalize-m5-maintenance-contract.md`、`docs/open-questions.md` |
 
 具体仕様の一覧は [仕様索引](./specs/index.md) を参照する。
 
@@ -22,7 +22,7 @@
 | M2 Format | 004, 009, 010, 011 | scope、OKF-compatible Markdown、citation、graph link rule |
 | M3 CLI/API | 012, 013, 014, 015 | Agent Skill 接続、CLI/API command contract、storage boundary、query/filing、JSON output contract、sidecar layout |
 | M4 Workflow | 005, 006, 007, 008, 018 | lifecycle、propose、redaction gate、operation-aware access、review/ownership |
-| M5 Maintenance | 011, 016, 017, 020 | graph lint、docs lint、gardening Agent Skill、CI gate 候補 |
+| M5 Maintenance | 011, 016, 017, 020 | graph lint、docs lint、gardening Agent Skill、CI gate、後続論点の分離 |
 
 ## ADR 対応
 
@@ -32,7 +32,7 @@
 | M2 Format | ADR 006, ADR 007, ADR 009, ADR 010 |
 | M3 CLI/API | ADR 008, ADR 011, ADR 013 |
 | M4 Workflow | ADR 002, ADR 003, ADR 004, ADR 005, ADR 012 |
-| M5 Maintenance | ADR 001, ADR 010, ADR 011 |
+| M5 Maintenance | ADR 001, ADR 010, ADR 011, ADR 014 |
 
 ## 完了ルール
 
