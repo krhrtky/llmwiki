@@ -1,3 +1,10 @@
+---
+type: adr
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # ADR 009: Keep Raw Sources Immutable
 
 ## Status

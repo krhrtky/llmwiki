@@ -1,3 +1,10 @@
+---
+type: adr
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # ADR 012: Require Human Review for Org Publish
 
 ## Status

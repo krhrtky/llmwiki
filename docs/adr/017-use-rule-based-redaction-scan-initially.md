@@ -1,3 +1,10 @@
+---
+type: adr
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # ADR 017: Use Rule-Based Redaction Scan Initially
 
 ## Status

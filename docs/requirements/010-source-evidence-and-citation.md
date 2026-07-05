@@ -1,3 +1,10 @@
+---
+type: requirement
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # Requirement 010: Source Evidence and Citation
 
 ## Background

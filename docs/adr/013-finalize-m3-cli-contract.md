@@ -1,3 +1,10 @@
+---
+type: adr
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # ADR 013: Finalize M3 CLI Contract
 
 ## Status

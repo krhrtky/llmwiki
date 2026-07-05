@@ -1,3 +1,10 @@
+---
+type: adr
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # ADR 005: Use Operation-Aware Access Control
 
 ## Status

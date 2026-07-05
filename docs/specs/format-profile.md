@@ -1,3 +1,10 @@
+---
+type: spec
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # Format Profile の仕様
 
 ## 目的
@@ -105,3 +112,18 @@
 - `llmwiki` namespace は producer-defined key として扱えること。
 - `index.md` と `log.md` は reserved files として扱えること。
 - raw source と wiki の境界を混在させないこと。
+
+## 既存 SoT docs の初期補完
+
+- 既存の SoT docs を初期登録するときは、`llmwiki.scope: team` と `llmwiki.lifecycle: active` を既定値として補完する。
+- `private` は現行 scope には含めず、個人相当の知識は `personal` として扱う。
+
+## Related Requirements
+
+- [Requirement 009](../requirements/009-okf-compatible-format.md)
+- [Requirement 010](../requirements/010-source-evidence-and-citation.md)
+
+## Related ADRs
+
+- [ADR 006](../adr/006-adopt-okf-compatible-markdown.md)
+- [ADR 007](../adr/007-extend-okf-with-llmwiki-namespace.md)

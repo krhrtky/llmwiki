@@ -1,3 +1,10 @@
+---
+type: open_questions
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # 未決事項
 
 このファイルは未決事項を集約する。実装者は未決事項を推測で埋めず、実装判断が分岐する場合はユーザー判断または追加 ADR を作成する。

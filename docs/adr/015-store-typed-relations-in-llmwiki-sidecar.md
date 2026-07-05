@@ -1,3 +1,10 @@
+---
+type: adr
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # ADR 015: Store Typed Relations in LLMWiki Sidecar
 
 ## Status

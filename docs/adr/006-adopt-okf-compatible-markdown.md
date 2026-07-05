@@ -1,3 +1,10 @@
+---
+type: adr
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # ADR 006: Adopt OKF-Compatible Markdown
 
 ## Status

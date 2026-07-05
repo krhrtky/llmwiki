@@ -1,3 +1,10 @@
+---
+type: requirement
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # Requirement 018: Review and Ownership
 
 ## Background

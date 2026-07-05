@@ -1,3 +1,10 @@
+---
+type: glossary
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # Glossary
 
 ## LLMWiki

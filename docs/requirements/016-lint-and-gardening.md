@@ -1,3 +1,10 @@
+---
+type: requirement
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # Requirement 016: Lint and Gardening
 
 ## Background

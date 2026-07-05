@@ -1,3 +1,10 @@
+---
+type: spec
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # Maintenance 仕様
 
 この文書は M5 Maintenance の初期実装を deterministic lint に固定し、graph lint、docs lint、gardening Agent Skill、継続検出の対象を定義する。

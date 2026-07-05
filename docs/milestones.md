@@ -1,3 +1,10 @@
+---
+type: milestone_index
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # Milestone 完了トラッカー
 
 この文書は Requirement 020 の M1 から M5 までについて、完了条件と証跡を一箇所に集約する。

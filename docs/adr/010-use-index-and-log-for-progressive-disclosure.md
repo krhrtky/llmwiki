@@ -1,3 +1,10 @@
+---
+type: adr
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # ADR 010: Use Index and Log for Progressive Disclosure
 
 ## Status

@@ -1,3 +1,10 @@
+---
+type: spec
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # CLI/API 仕様
 
 ## 目的

@@ -1,3 +1,10 @@
+---
+type: adr
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # ADR 007: Extend OKF with LLMWiki Namespace
 
 ## Status

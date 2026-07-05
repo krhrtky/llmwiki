@@ -1,3 +1,10 @@
+---
+type: spec
+llmwiki:
+  scope: team
+  lifecycle: active
+---
+
 # Workflow and Access 仕様
 
 ## 目的
