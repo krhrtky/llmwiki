@@ -120,7 +120,7 @@ llmwiki:
 
 ## Agent Skill 接続
 
-Requirement 012 の初期 skill は、CLI/API command と次のように接続する。Codex Skill の配布実体は `skills/llmwiki/SKILL.md` とし、ここでは command contract と skill contract の対応を固定する。
+Requirement 012 の初期 skill は、CLI/API command と次のように接続する。Codex Skill の配布実体は `skills/*/SKILL.md` とし、ここでは command contract と skill contract の対応を固定する。
 
 ### Core knowledge operations
 

@@ -79,7 +79,8 @@ llmwiki lint --workspace-root .
 llmwiki skill install --workspace-root . --codex-home ~/.codex
 ```
 
-- `skill install` は `skills/llmwiki/SKILL.md` を Codex skill directory へ配置する配布補助です。
+- `skill install` は `skills/*/SKILL.md` を Codex skill directory へ配置する配布補助です。
+- インストール対象は入口 skill `llmwiki` と用途別 skill `llmwiki-answer-query`、`llmwiki-ingest-source`、`llmwiki-file-knowledge`、`llmwiki-promote-knowledge`、`llmwiki-maintain`、`llmwiki-export` です。
 
 ## Install
 
