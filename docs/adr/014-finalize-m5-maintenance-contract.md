@@ -45,14 +45,6 @@ deterministic lint は file-first repository で再現しやすく、CLI automat
 - Negative: 暗黙矛盾や暗黙 stale claim は初期段階では検出できない。
 - Negative: LLM / DLP redaction scan と本文意味比較は別判断として後続化される。
 
-## Open Questions
-
-- LLM / DLP redaction scan を追加する条件は後続 ADR とする。
-- source 更新に基づく stale claim 検出の metadata contract は後続 ADR とする。
-- 本文意味比較による contradiction / stale 検出の実装方式は後続 ADR とする。
-
-初期実装の blocker から外す判断は [ADR 017](./017-use-rule-based-redaction-scan-initially.md) と [ADR 018](./018-defer-semantic-maintenance-detection.md) に従う。
-
 ## Related Requirements
 
 - [Requirement 010](../requirements/010-source-evidence-and-citation.md)

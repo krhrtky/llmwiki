@@ -3,7 +3,10 @@ use crate::markdown::{
     parse_markdown, resolve_markdown_target, MarkdownParseError,
 };
 use crate::report::{Finding, LintReport, Severity};
-use crate::sidecar::{read_page_sidecar, read_workflow_sidecar, PageSidecar, WorkflowSidecar};
+use crate::sidecar::{
+    read_page_sidecar, read_workflow_sidecar, relation_target_requires_kind, target_kind_is_valid,
+    PageSidecar, WorkflowSidecar, VALID_RELATIONS,
+};
 use chrono::{NaiveDate, Utc};
 use serde_json::json;
 use serde_yaml::{Mapping, Value};
@@ -25,25 +28,6 @@ const VALID_LIFECYCLES: &[&str] = &[
 ];
 const KNOWN_TOP_LEVEL_KEYS: &[&str] = &["type", "llmwiki"];
 const ORG_CANDIDATE_LIFECYCLES: &[&str] = &["proposed", "reviewing"];
-const VALID_RELATIONS: &[&str] = &[
-    "depends_on",
-    "constrained_by",
-    "implements",
-    "specializes",
-    "derived_from",
-    "answers",
-    "decided_by",
-    "contradicts",
-    "supersedes",
-    "superseded_by",
-    "related_to",
-    "example_of",
-    "mentions",
-    "similar_to",
-    "owned_by",
-    "reviewed_by",
-];
-
 #[derive(Debug)]
 pub enum LintError {
     Io { message: String },
@@ -409,43 +393,41 @@ impl LintState {
                     })),
                 );
             }
-            if !state.has_log {
+            for page in &state.pages {
+                let linked_from_index = state.index_links.contains(page);
+                let reflected_in_log = state.has_log
+                    && (state.log_links.contains(page) || log_mentions_page(&state.log_text, page));
+                if linked_from_index || reflected_in_log {
+                    continue;
+                }
+                let (message, suggested_action, expected_update) = if state.has_log {
+                    (
+                        "concept page is not reflected in directory index.md or log.md",
+                        "page_owner が index.md の navigation または log.md の変更履歴に page を反映する",
+                        "update_index_or_log",
+                    )
+                } else {
+                    (
+                        "concept page is not reflected in directory index.md",
+                        "page_owner が index.md の navigation に page を反映する",
+                        "update_index",
+                    )
+                };
                 findings.push(
                     Finding::new(
                         "docs.index_log_drift",
                         Severity::Warning,
-                        format!("{directory}/log.md").trim_start_matches('/'),
+                        page,
                         1,
-                        "directory with 5 or more concept pages is missing log.md",
+                        message,
                         true,
-                        "directory の履歴用 log.md を追加する",
+                        suggested_action,
                     )
                     .with_details(json!({
-                        "expected_update": "add_log",
-                        "directory": directory,
+                        "expected_update": expected_update,
+                        "page": page,
                     })),
                 );
-            }
-            for page in &state.pages {
-                let linked_from_index = state.index_links.contains(page);
-                let reflected_in_log =
-                    state.log_links.contains(page) || log_mentions_page(&state.log_text, page);
-                if linked_from_index || reflected_in_log {
-                    continue;
-                }
-                findings.push(Finding::new(
-                    "docs.index_log_drift",
-                    Severity::Warning,
-                    page,
-                    1,
-                    "concept page is not reflected in directory index.md and log.md",
-                    true,
-                    "page_owner が index.md の navigation と log.md の変更履歴に page を反映する",
-                )
-                .with_details(json!({
-                    "expected_update": "update_index_or_log",
-                    "page": page,
-                })));
             }
         }
 
@@ -579,7 +561,15 @@ fn lint_file(
     lint_sidecar_parse_issues(&relative, sidecar.as_ref(), findings);
     lint_frontmatter_claims(&relative, mapping, state, findings);
     lint_sidecar_claims(&relative, sidecar.as_ref(), state, findings);
-    lint_sidecar_relations(root, path, &relative, sidecar.as_ref(), state, findings);
+    lint_sidecar_relations(
+        root,
+        bundle_root,
+        path,
+        &relative,
+        sidecar.as_ref(),
+        state,
+        findings,
+    );
     lint_required_links(&relative, &document, state, findings);
     lint_published_citation(&relative, mapping, &document, findings);
     lint_links(root, bundle_root, path, &document.links, findings);
@@ -867,6 +857,7 @@ fn lint_sidecar_claims(
 
 fn lint_sidecar_relations(
     root: &Path,
+    bundle_root: &Path,
     source_path: &Path,
     relative: &str,
     sidecar: Option<&PageSidecar>,
@@ -878,6 +869,11 @@ fn lint_sidecar_relations(
     };
 
     for relation in &sidecar.relations {
+        let target = relation
+            .target
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default();
         let known_relation = VALID_RELATIONS.contains(&relation.relation_type.as_str());
         if !known_relation {
             findings.push(Finding::new(
@@ -891,15 +887,57 @@ fn lint_sidecar_relations(
             ));
         }
 
+        if target.is_empty() {
+            findings.push(Finding::new(
+                "graph.missing_relation_target",
+                Severity::Error,
+                relative,
+                1,
+                format!(
+                    "typed relation {} is missing target",
+                    relation.relation_type
+                ),
+                false,
+                "relations[] に非空の target を追加する",
+            ));
+        }
+
+        if let Some(target_kind) = relation.target_kind.as_deref() {
+            if !target_kind_is_valid(target_kind) {
+                findings.push(Finding::new(
+                    "graph.invalid_target_kind",
+                    Severity::Warning,
+                    relative,
+                    1,
+                    format!(
+                        "typed relation {} has invalid target_kind {}",
+                        relation.relation_type, target_kind
+                    ),
+                    false,
+                    "target_kind を doc, code, test, skill, command, generated, external のいずれかに修正する",
+                ));
+            }
+        } else if !target.is_empty()
+            && relation_target_requires_kind(bundle_root, source_path, target)
+        {
+            findings.push(Finding::new(
+                "graph.non_markdown_target_without_kind",
+                Severity::Warning,
+                relative,
+                1,
+                format!(
+                    "typed relation {} points to a non-markdown target without target_kind",
+                    relation.relation_type
+                ),
+                false,
+                "non-markdown target の relation に target_kind を追加する",
+            ));
+        }
+
         if matches!(
             relation.relation_type.as_str(),
             "supersedes" | "superseded_by"
-        ) && relation
-            .target
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or_default()
-            .is_empty()
+        ) && target.is_empty()
         {
             findings.push(Finding::new(
                 "graph.superseded_without_target",
@@ -927,22 +965,48 @@ fn lint_sidecar_relations(
             ));
         }
 
-        if let Some(target) = relation.target.as_deref() {
-            if known_relation && !target.trim().is_empty() {
-                state.record_relation(
-                    relative,
-                    &normalized_relation_target(root, source_path, target),
-                    &relation.relation_type,
-                );
-            }
+        if !target.is_empty() && known_relation {
+            state.record_relation(
+                relative,
+                &normalized_relation_target(
+                    root,
+                    source_path,
+                    target,
+                    relation.target_kind.as_deref(),
+                ),
+                &relation.relation_type,
+            );
         }
     }
 }
 
-fn normalized_relation_target(root: &Path, source_path: &Path, target: &str) -> String {
-    resolve_markdown_target(source_path, target)
-        .map(|path| relative_path(root, &path))
-        .unwrap_or_else(|| target.trim().to_string())
+fn normalized_relation_target(
+    root: &Path,
+    source_path: &Path,
+    target: &str,
+    target_kind: Option<&str>,
+) -> String {
+    if matches!(target_kind, Some("command" | "external" | "generated")) {
+        return target.trim().to_string();
+    }
+
+    let Some(resolved) = resolve_markdown_target(source_path, target) else {
+        return target.trim().to_string();
+    };
+
+    if resolved.starts_with(root) {
+        relative_path(root, &resolved)
+    } else {
+        target
+            .split('#')
+            .next()
+            .unwrap_or(target)
+            .split('?')
+            .next()
+            .unwrap_or(target)
+            .trim()
+            .to_string()
+    }
 }
 
 fn lint_review_after(
@@ -1838,7 +1902,7 @@ mod tests {
     }
 
     #[test]
-    fn relation_missing_target_is_parse_failure() {
+    fn relation_missing_target_is_graph_finding() {
         let dir = tempdir().unwrap();
         write_file(dir.path().join("index.md"), "# Index\n");
         write_file(
@@ -1852,11 +1916,16 @@ mod tests {
 
         let report = lint_workspace(dir.path(), &[]).unwrap();
 
-        assert!(report
+        assert!(!report
             .findings
             .iter()
             .any(|finding| finding.id == "parse_failure"
                 && finding.message.contains("missing non-empty target")));
+        assert!(report
+            .findings
+            .iter()
+            .any(|finding| finding.id == "graph.missing_relation_target"
+                && finding.message.contains("missing target")));
     }
 
     #[test]

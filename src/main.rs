@@ -2,6 +2,7 @@ use clap::{error::ErrorKind, Parser, Subcommand, ValueEnum};
 use llmwiki::commands::{
     run_export_command, run_file_command, run_graph_command, run_ingest_command, run_lint_command,
     run_propose_command, run_query_command, run_redact_command, run_related_command,
+    run_skill_install_command,
 };
 use std::path::PathBuf;
 
@@ -146,6 +147,20 @@ enum Command {
         scope: Option<ScopeArg>,
         paths: Vec<PathBuf>,
     },
+    Skill {
+        #[command(subcommand)]
+        command: SkillCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum SkillCommand {
+    Install {
+        #[arg(long, default_value = ".")]
+        workspace_root: PathBuf,
+        #[arg(long)]
+        codex_home: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -190,6 +205,12 @@ fn main() {
             paths,
             ..
         } => run_lint_command(&workspace_root, &paths),
+        Command::Skill { command } => match command {
+            SkillCommand::Install {
+                workspace_root,
+                codex_home,
+            } => run_skill_install_command(&workspace_root, codex_home),
+        },
         Command::Ingest {
             workspace_root,
             paths,

@@ -16,6 +16,9 @@ llmwiki:
 - LLM または DLP service を redaction scan に追加する条件。
 - source 更新に基づく stale claim 検出の metadata contract。
 - 本文意味比較による contradiction / stale 検出の実装方式。
+- fixed minimum audit fields を超えて追加する必須監査項目。
+- related retrieval の最小 index schema（section chunk、BM25、embedding）。
+- relation proposal の human approval workflow を `file`、`propose`、または新 command に接続するか。
 
 ## 解決済み
 
@@ -23,6 +26,7 @@ llmwiki:
 - M3 では metadata store と workflow state store に page 隣接 sidecar (`page.llmwiki.yaml`, `page.workflow.yaml`) を採用する。詳細は [ADR 013](./adr/013-finalize-m3-cli-contract.md)。
 - M3 では CLI/API output の正式 transport を JSON のみに固定し、Markdown report は派生表示として扱う。詳細は [ADR 013](./adr/013-finalize-m3-cli-contract.md)。
 - typed relation の補助 metadata は `page.llmwiki.yaml` に保存する。Markdown link は graph edge の正本であり、typed relation は補助 metadata として扱う。詳細は [ADR 015](./adr/015-store-typed-relations-in-llmwiki-sidecar.md)。
+- `index.md` は bundle の必須入口であり、`log.md` は予約ファイルとして許容するが必須ではない。詳細は [ADR 010](./adr/010-use-index-and-log-for-progressive-disclosure.md)。
 - access policy の評価順序は `deny > hold > allow` とし、一致 policy がない場合は `hold` とする。specificity は同一 decision 内の説明対象選択に使う。詳細は [ADR 016](./adr/016-finalize-access-policy-evaluation.md)。
 - 初期 redaction scan は rule-based deterministic とし、redaction report と sanitized draft は `.llmwiki/redactions/` に保存する。詳細は [ADR 017](./adr/017-use-rule-based-redaction-scan-initially.md)。
 - 本文意味比較による contradiction / stale 検出と source 更新に基づく stale claim 検出は初期完成の必須範囲に含めない。詳細は [ADR 018](./adr/018-defer-semantic-maintenance-detection.md)。
@@ -31,6 +35,7 @@ llmwiki:
 
 - 初期ユースケースを個人 wiki、チーム wiki、問い合わせ管理、またはハーネスエンジニアリング基盤のどれに寄せるか。
 - 秘匿情報の最終分類を社内ポリシーと合わせるか、LLMWiki 独自の初期分類で始めるか。
+- `org` publish における approver の委譲ルールを、組織の実運用に合わせてどこまで細分化するか。
 
 ## 解決済み（M4）
 

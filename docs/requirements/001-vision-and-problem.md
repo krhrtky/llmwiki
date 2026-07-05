@@ -46,7 +46,3 @@ LLMWiki は raw source と回答の間に、LLM が継続的に保守する wiki
 - [ADR 001](../adr/001-use-docs-as-source-of-truth.md)
 - [ADR 009](../adr/009-keep-raw-sources-immutable.md)
 - [ADR 010](../adr/010-use-index-and-log-for-progressive-disclosure.md)
-
-## Open Questions
-
-- 初期ユースケースを個人、チーム、問い合わせ管理、またはハーネス基盤のどれに寄せるか。

@@ -46,4 +46,5 @@ llmwiki:
 - 完了判定は、本文の存在ではなく、対応 requirement の受け入れ条件を満たす証跡があることで行う。
 - 未決事項は完了を妨げない。ただし仕様分岐が必要な点は `docs/open-questions.md` に集約し、各 spec の `Open Questions` は該当項目の再掲に留める。
 - 実装フェーズの制約 `model: gpt-5.4 medium` は AGENTS.md、`docs/index.md`、Requirement 012、Requirement 020 に記録されている。
+- docs↔implementation traceability と Codex Skill 配布の方針は、ADR 021、ADR 022、および関連 requirement/spec で追跡する。
 - domain application 固有の workflow、DB、外部 service は milestone 完了条件に含めない。

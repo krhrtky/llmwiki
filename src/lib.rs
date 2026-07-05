@@ -12,3 +12,4 @@ pub mod redact;
 pub mod related;
 pub mod report;
 pub mod sidecar;
+pub mod skill;

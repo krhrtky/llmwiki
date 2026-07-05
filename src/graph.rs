@@ -3,7 +3,9 @@ use crate::markdown::{
     MarkdownParseError,
 };
 use crate::report::{Finding, GraphEdge, GraphIndex, GraphNode, GraphRelation, Severity};
-use crate::sidecar::read_page_sidecar;
+use crate::sidecar::{
+    read_page_sidecar, relation_target_requires_kind, target_kind_is_valid, VALID_RELATIONS,
+};
 use chrono::Utc;
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
@@ -11,25 +13,6 @@ use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-
-const VALID_RELATIONS: &[&str] = &[
-    "depends_on",
-    "constrained_by",
-    "implements",
-    "specializes",
-    "derived_from",
-    "answers",
-    "decided_by",
-    "contradicts",
-    "supersedes",
-    "superseded_by",
-    "related_to",
-    "example_of",
-    "mentions",
-    "similar_to",
-    "owned_by",
-    "reviewed_by",
-];
 
 #[derive(Debug)]
 pub enum GraphError {
@@ -209,10 +192,16 @@ fn lint_graph_file(root: &Path, bundle_root: &Path, path: &Path, state: &mut Gra
         lint_required_links(&relative, &document, state);
     }
     lint_markdown_links(root, bundle_root, path, &document.links, state);
-    lint_sidecar_relations(root, path, &relative, state);
+    lint_sidecar_relations(root, bundle_root, path, &relative, state);
 }
 
-fn lint_sidecar_relations(root: &Path, source_path: &Path, relative: &str, state: &mut GraphState) {
+fn lint_sidecar_relations(
+    root: &Path,
+    bundle_root: &Path,
+    source_path: &Path,
+    relative: &str,
+    state: &mut GraphState,
+) {
     let sidecar = match read_page_sidecar(source_path, root) {
         Ok(sidecar) => sidecar,
         Err(message) => {
@@ -248,10 +237,68 @@ fn lint_sidecar_relations(root: &Path, source_path: &Path, relative: &str, state
     let mut relation_types: HashMap<(String, String), HashSet<String>> = HashMap::new();
 
     for relation in &sidecar.relations {
-        let normalized_target = relation
+        let normalized_target = relation.target.as_deref().and_then(|target| {
+            normalized_relation_target(root, source_path, target, relation.target_kind.as_deref())
+        });
+
+        if relation
             .target
             .as_deref()
-            .and_then(|target| normalized_graph_target(root, source_path, target));
+            .map(str::trim)
+            .unwrap_or_default()
+            .is_empty()
+        {
+            state.findings.push(Finding::new(
+                "graph.missing_relation_target",
+                Severity::Error,
+                relative,
+                1,
+                format!(
+                    "typed relation {} is missing target",
+                    relation.relation_type
+                ),
+                false,
+                "relations[] に非空の target を追加する",
+            ));
+        } else if relation
+            .target_kind
+            .as_deref()
+            .map(|target_kind| !target_kind_is_valid(target_kind))
+            .unwrap_or(false)
+        {
+            state.findings.push(Finding::new(
+                "graph.invalid_target_kind",
+                Severity::Warning,
+                relative,
+                1,
+                format!(
+                    "typed relation {} has invalid target_kind {}",
+                    relation.relation_type,
+                    relation.target_kind.as_deref().unwrap_or_default()
+                ),
+                false,
+                "target_kind を doc, code, test, skill, command, generated, external のいずれかに修正する",
+            ));
+        } else if relation
+            .target
+            .as_deref()
+            .map(|target| relation_target_requires_kind(bundle_root, source_path, target))
+            .unwrap_or(false)
+            && relation.target_kind.is_none()
+        {
+            state.findings.push(Finding::new(
+                "graph.non_markdown_target_without_kind",
+                Severity::Warning,
+                relative,
+                1,
+                format!(
+                    "typed relation {} points to a non-markdown target without target_kind",
+                    relation.relation_type
+                ),
+                false,
+                "non-markdown target の relation に target_kind を追加する",
+            ));
+        }
 
         if !VALID_RELATIONS.contains(&relation.relation_type.as_str()) {
             state.findings.push(Finding::new(
@@ -289,6 +336,12 @@ fn lint_sidecar_relations(root: &Path, source_path: &Path, relative: &str, state
                 source: relative.to_string(),
                 relation_type: relation.relation_type.clone(),
                 target: target.clone(),
+                target_kind: relation
+                    .target_kind
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToOwned::to_owned),
             });
             relation_types
                 .entry((relative.to_string(), target))
@@ -365,6 +418,36 @@ fn lint_markdown_links(
 fn normalized_graph_target(root: &Path, source_path: &Path, target: &str) -> Option<String> {
     if is_external_or_anchor_link(target) {
         return None;
+    }
+
+    let resolved = resolve_markdown_target(source_path, target)?;
+    Some(if resolved.starts_with(root) {
+        relative_path(root, &resolved)
+    } else {
+        target
+            .split('#')
+            .next()
+            .unwrap_or(target)
+            .split('?')
+            .next()
+            .unwrap_or(target)
+            .trim()
+            .to_string()
+    })
+}
+
+fn normalized_relation_target(
+    root: &Path,
+    source_path: &Path,
+    target: &str,
+    target_kind: Option<&str>,
+) -> Option<String> {
+    if matches!(target_kind, Some("command" | "external" | "generated")) {
+        let trimmed = target.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        return Some(trimmed.to_string());
     }
 
     let resolved = resolve_markdown_target(source_path, target)?;
@@ -683,7 +766,7 @@ mod tests {
     }
 
     #[test]
-    fn reports_sidecar_relation_schema_issues() {
+    fn reports_missing_relation_target() {
         let dir = tempdir().unwrap();
         write_file(dir.path().join("index.md"), "# Index\n");
         write_file(dir.path().join("page.md"), "# Page\n");
@@ -694,11 +777,16 @@ mod tests {
 
         let graph_index = build_graph_index(dir.path(), &[]).unwrap();
 
-        assert!(graph_index
+        assert!(!graph_index
             .findings
             .iter()
             .any(|finding| finding.id == "parse_failure"
                 && finding.message.contains("missing non-empty target")));
+        assert!(graph_index
+            .findings
+            .iter()
+            .any(|finding| finding.id == "graph.missing_relation_target"
+                && finding.message.contains("missing target")));
     }
 
     #[test]

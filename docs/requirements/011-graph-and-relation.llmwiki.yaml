@@ -1,0 +1,10 @@
+relations:
+  - type: implemented_by
+    target: ../../src/sidecar.rs
+    target_kind: code
+  - type: enforced_by
+    target: ../../src/lint.rs
+    target_kind: code
+  - type: verified_by
+    target: ../../tests/cli_golden.rs
+    target_kind: test

@@ -86,6 +86,10 @@ fn normalize_key(key: &str, value: &mut Value) -> bool {
             *value = Value::String("<candidate_path>".to_string());
             true
         }
+        "install_path" => {
+            *value = Value::String("<install_path>".to_string());
+            true
+        }
         "export_path" => {
             *value = Value::String("<export_path>".to_string());
             true
@@ -219,7 +223,7 @@ fn graph_cli_returns_graph_index_golden() {
     write_file(root.path().join("docs").join("delta.md"), "# Delta\n");
     write_file(
         root.path().join("docs").join("alpha.llmwiki.yaml"),
-        "relations:\n  - type: depends_on\n    target: beta.md\n  - type: mentions\n    target: gamma.md\n  - type: similar_to\n    target: delta.md\n",
+        "relations:\n  - type: depends_on\n    target: beta.md\n  - type: implemented_by\n    target: ../src/main.rs\n    target_kind: code\n  - type: verified_by\n    target: ../tests/cli_golden.rs\n    target_kind: test\n  - type: mentions\n    target: gamma.md\n  - type: similar_to\n    target: delta.md\n",
     );
 
     let actual = run_and_normalize(&[
@@ -252,6 +256,12 @@ fn graph_cli_returns_graph_index_golden() {
                 },
                 {
                     "source": "docs/alpha.md",
+                    "relation_type": "implemented_by",
+                    "target": "src/main.rs",
+                    "target_kind": "code"
+                },
+                {
+                    "source": "docs/alpha.md",
                     "relation_type": "mentions",
                     "target": "docs/gamma.md"
                 },
@@ -259,6 +269,12 @@ fn graph_cli_returns_graph_index_golden() {
                     "source": "docs/alpha.md",
                     "relation_type": "similar_to",
                     "target": "docs/delta.md"
+                },
+                {
+                    "source": "docs/alpha.md",
+                    "relation_type": "verified_by",
+                    "target": "tests/cli_golden.rs",
+                    "target_kind": "test"
                 }
             ],
             "findings": []
@@ -398,6 +414,181 @@ fn query_cli_returns_query_result_golden() {
         "query-allow",
         &["docs/index.md", "docs/query.md"],
     );
+}
+
+#[test]
+fn lint_cli_returns_target_kind_warnings_golden() {
+    let root = tempdir().unwrap();
+    bundle_root(root.path());
+    write_file(
+        root.path().join("docs").join("index.md"),
+        "# Index\n\n[Page](page.md)\n",
+    );
+    write_file(
+        root.path().join("docs").join("page.md"),
+        "---\ntype: concept\nllmwiki:\n  scope: personal\n---\n# Page\n",
+    );
+    write_file(
+        root.path().join("docs").join("page.llmwiki.yaml"),
+        "relations:\n  - type: implemented_by\n    target: ../src/main.rs\n  - type: verified_by\n    target: ../../tests/cli_golden.rs\n    target_kind: invalid\n  - type: enforced_by\n    target: ../skills/llmwiki/SKILL.md\n  - type: distributed_as\n    target: llmwiki install\n    target_kind: command\n",
+    );
+
+    let actual = run_and_normalize(&[
+        "lint",
+        "--workspace-root",
+        root.path().to_str().unwrap(),
+        "docs/index.md",
+        "docs/page.md",
+    ]);
+
+    let expected = json!({
+        "lint_report": {
+            "generated_at": "<generated_at>",
+            "bundle": "<bundle>",
+            "findings": [
+                {
+                    "id": "graph.non_markdown_target_without_kind",
+                    "severity": "warning",
+                    "path": "docs/page.md",
+                    "line": 1,
+                    "message": "typed relation implemented_by points to a non-markdown target without target_kind",
+                    "requires_human_decision": false,
+                    "suggested_action": "non-markdown target の relation に target_kind を追加する"
+                },
+                {
+                    "id": "graph.invalid_target_kind",
+                    "severity": "warning",
+                    "path": "docs/page.md",
+                    "line": 1,
+                    "message": "typed relation verified_by has invalid target_kind invalid",
+                    "requires_human_decision": false,
+                    "suggested_action": "target_kind を doc, code, test, skill, command, generated, external のいずれかに修正する"
+                },
+                {
+                    "id": "graph.non_markdown_target_without_kind",
+                    "severity": "warning",
+                    "path": "docs/page.md",
+                    "line": 1,
+                    "message": "typed relation enforced_by points to a non-markdown target without target_kind",
+                    "requires_human_decision": false,
+                    "suggested_action": "non-markdown target の relation に target_kind を追加する"
+                }
+            ]
+        }
+    });
+
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn lint_cli_does_not_require_log_file_golden() {
+    let root = tempdir().unwrap();
+    bundle_root(root.path());
+    let section = root.path().join("docs").join("section");
+    fs::create_dir_all(&section).unwrap();
+    write_file(
+        section.join("index.md"),
+        "# Section\n\n[Page 1](page1.md)\n[Page 2](page2.md)\n[Page 3](page3.md)\n[Page 4](page4.md)\n[Page 5](page5.md)\n",
+    );
+    for index in 1..=5 {
+        write_file(
+            section.join(format!("page{index}.md")),
+            &format!("---\ntype: concept\nllmwiki:\n  scope: personal\n---\n# Page {index}\n"),
+        );
+    }
+
+    let actual = run_and_normalize(&[
+        "lint",
+        "--workspace-root",
+        root.path().to_str().unwrap(),
+        "docs/section",
+    ]);
+
+    let expected = json!({
+        "lint_report": {
+            "generated_at": "<generated_at>",
+            "bundle": "<bundle>",
+            "findings": []
+        }
+    });
+
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn skill_install_cli_returns_skill_install_result_golden() {
+    let root = tempdir().unwrap();
+    bundle_root(root.path());
+    write_file(
+        root.path().join("skills").join("llmwiki").join("SKILL.md"),
+        "---\nname: llmwiki\ndescription: LLMWiki entry point skill\n---\n# LLMWiki\n",
+    );
+    let codex_home = tempdir().unwrap();
+
+    let actual = run_and_normalize(&[
+        "skill",
+        "install",
+        "--workspace-root",
+        root.path().to_str().unwrap(),
+        "--codex-home",
+        codex_home.path().to_str().unwrap(),
+    ]);
+
+    let expected = json!({
+        "skill_install_result": {
+            "generated_at": "<generated_at>",
+            "status": "success",
+            "skill": "llmwiki",
+            "source_path": "skills/llmwiki/SKILL.md",
+            "install_path": "<install_path>",
+            "message": "skill installed"
+        }
+    });
+
+    assert_eq!(actual, expected);
+    assert_eq!(
+        fs::read_to_string(
+            codex_home
+                .path()
+                .join("skills")
+                .join("llmwiki")
+                .join("SKILL.md")
+        )
+        .unwrap(),
+        "---\nname: llmwiki\ndescription: LLMWiki entry point skill\n---\n# LLMWiki\n"
+    );
+}
+
+#[test]
+fn skill_install_cli_rejects_relative_codex_home_golden() {
+    let root = tempdir().unwrap();
+    bundle_root(root.path());
+    write_file(
+        root.path().join("skills").join("llmwiki").join("SKILL.md"),
+        "---\nname: llmwiki\ndescription: LLMWiki entry point skill\n---\n# LLMWiki\n",
+    );
+
+    let actual = run_and_normalize(&[
+        "skill",
+        "install",
+        "--workspace-root",
+        root.path().to_str().unwrap(),
+        "--codex-home",
+        "relative-codex-home",
+    ]);
+
+    let expected = json!({
+        "skill_install_result": {
+            "generated_at": "<generated_at>",
+            "status": "error",
+            "skill": "llmwiki",
+            "source_path": "skills/llmwiki/SKILL.md",
+            "install_path": "<install_path>",
+            "message": "codex home must be a non-empty absolute path"
+        }
+    });
+
+    assert_eq!(actual, expected);
 }
 
 #[test]

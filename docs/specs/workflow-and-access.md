@@ -114,9 +114,9 @@ gate の出力契約は固定する。初期実装は [ADR 017](../adr/017-use-r
 
 ### publish 後の link
 
-- `published` へ遷移した proposal は、元 page と publish page を相互に link する。
+- `published` へ遷移した proposal は、元 page と publish page を Markdown 本文で相互に link する。
 - 元 page 側には `published_to` 相当の参照を残し、publish page 側には `derived_from` 相当の参照を残す。
-- link の正本は page 本文または page metadata が持つ page 間参照であり、workflow sidecar には実行結果を記録する。
+- page 間 link の正本は Markdown 本文に置く。implementation traceability は `*.llmwiki.yaml` の `relations[]` に置き、workflow sidecar には実行結果と decision を記録する。
 
 ## ownership の責務
 
@@ -196,7 +196,23 @@ decision_log:
 - `export` と `train` は高影響操作として明示的に制御する。
 - `hold` は lifecycle state ではなく、workflow sidecar に残す review/policy decision とする。decision log はその監査用の派生記録として扱う。
 
-## 未決事項
+## Related Requirements
 
-- fixed minimum audit fields を超えて追加する必須監査項目。
-- LLM または DLP service を redaction scan に追加する条件。
+- [Requirement 002: Human Agent Responsibility](../requirements/002-human-agent-responsibility.md)
+- [Requirement 004: Scope Model](../requirements/004-scope-model.md)
+- [Requirement 005: Knowledge Lifecycle](../requirements/005-knowledge-lifecycle.md)
+- [Requirement 006: Propose Workflow](../requirements/006-propose-workflow.md)
+- [Requirement 007: Redaction and Generalization](../requirements/007-redaction-and-generalization.md)
+- [Requirement 008: Operation-Aware Access Control](../requirements/008-operation-aware-access-control.md)
+- [Requirement 018: Review and Ownership](../requirements/018-review-and-ownership.md)
+
+## Related ADRs
+
+- [ADR 002: Adopt Personal Team Org Scope](../adr/002-adopt-personal-team-org-scope.md)
+- [ADR 003: Use Propose Not Backport](../adr/003-use-propose-not-backport.md)
+- [ADR 004: Require Redaction Gate](../adr/004-require-redaction-gate.md)
+- [ADR 005: Use Operation-Aware Access Control](../adr/005-use-operation-aware-access-control.md)
+- [ADR 012: Require Human Review for Org Publish](../adr/012-require-human-review-for-org-publish.md)
+- [ADR 016: Finalize Access Policy Evaluation](../adr/016-finalize-access-policy-evaluation.md)
+- [ADR 017: Use Rule-Based Redaction Scan Initially](../adr/017-use-rule-based-redaction-scan-initially.md)
+- [ADR 021: Trace Docs and Implementation with Stable Evidence Links](../adr/021-trace-docs-and-implementation-with-stable-evidence-links.md)

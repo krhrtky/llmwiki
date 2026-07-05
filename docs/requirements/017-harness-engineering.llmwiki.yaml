@@ -1,0 +1,10 @@
+relations:
+  - type: enforced_by
+    target: ../../src/lint.rs
+    target_kind: code
+  - type: enforced_by
+    target: ../../src/graph.rs
+    target_kind: code
+  - type: enforced_by
+    target: ../../.github/workflows/ci.yml
+    target_kind: code

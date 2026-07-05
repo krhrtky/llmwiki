@@ -7,11 +7,13 @@ use crate::propose::{propose_workspace, ProposeError};
 use crate::query::{query_workspace, QueryError};
 use crate::redact::{redact_workspace, RedactError};
 use crate::related::{related_workspace, RelatedError, RelatedInput};
+use crate::report::SkillInstallResultEnvelope;
 use crate::report::{
     CommandStatus, CommandStatusEnvelope, ExportArtifactEnvelope, Finding, GraphIndexEnvelope,
     IngestResultEnvelope, LintReport, LintReportEnvelope, ProposalDraftEnvelope,
     QueryResultEnvelope, RelatedResultEnvelope, Severity,
 };
+use crate::skill::install_llmwiki_skill;
 use chrono::Utc;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -211,6 +213,15 @@ pub fn run_file_command(
             })?,
         },
     )
+}
+
+pub fn run_skill_install_command(
+    workspace_root: &Path,
+    codex_home: Option<PathBuf>,
+) -> Result<serde_json::Value, LintError> {
+    to_value(SkillInstallResultEnvelope {
+        skill_install_result: install_llmwiki_skill(workspace_root, codex_home),
+    })
 }
 
 pub fn run_redact_command(

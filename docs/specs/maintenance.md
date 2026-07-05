@@ -50,6 +50,9 @@ M5 lint は proposal workflow state の状態 field を `lifecycle` として読
 | `graph.orphan_page` | orphan page | `index.md` と他 page から参照されない wiki page | page、候補 parent |
 | `graph.missing_required_link` | 重要概念の欠落 | requirement、ADR、spec が required link を持たない | page、期待 link 種別 |
 | `graph.unknown_relation` | unknown relation | `*.llmwiki.yaml` の relation が初期語彙にない。Markdown link は正本であり、この finding は補助 relation にのみ適用する | page、relation |
+| `graph.invalid_target_kind` | invalid target kind | `*.llmwiki.yaml` の `target_kind` が有効値ではない | page、target_kind |
+| `graph.non_markdown_target_without_kind` | missing target kind | Markdown 以外の relation target が `target_kind` を持たない | page、target |
+| `graph.missing_relation_target` | missing relation target | `*.llmwiki.yaml` の relation が target を持たない | page、relation |
 | `graph.ambiguous_relation` | ambiguous relation | `*.llmwiki.yaml` の同一 source/target 間に複数の relation type がある | source、target、relations |
 | `graph.superseded_without_target` | superseded target 欠落 | `*.llmwiki.yaml` の `supersedes` または `superseded_by` が target を持たない | page、relation |
 
@@ -71,13 +74,15 @@ claims:
 relations:
   - type: depends_on
     target: docs/example.md
+    # required for non-Markdown targets; optional for Markdown targets
+    target_kind: doc
     # optional for retrieval-oriented relation metadata
     provenance: human
     confidence: high
     status: active
 ```
 
-`value` は optional とし、top-level `relations[]` は `type` と `target` のみを初期 lint の必須項目とする。`provenance`、`confidence`、`status` は retrieval のための optional metadata であり、初期 lint は unknown field として拒否しない。lint は top-level `relations[]` を relation 入力として読み、frontmatter、本文、`page.workflow.yaml`、または `relations[]` 以外の metadata は graph relation 判定の入力にしない。
+`value` は optional とし、top-level `relations[]` は `type` と `target` を初期 lint の必須項目とする。`target_kind` は relation の target 種別を示す補助 metadata であり、`doc`、`code`、`test`、`skill`、`command`、`generated`、`external` を有効値とする。Markdown 以外の target では `target_kind` も必須とする。`provenance`、`confidence`、`status` は retrieval のための optional metadata であり、初期 lint は unknown field として拒否しない。lint は top-level `relations[]` を relation 入力として読み、frontmatter、本文、`page.workflow.yaml`、または `relations[]` 以外の metadata は graph relation 判定の入力にしない。
 
 `graph.unknown_relation`、`graph.ambiguous_relation`、`graph.superseded_without_target` はこの sidecar relation を入力にする。`docs.contradiction` も explicit `contradicts` relation をこの sidecar から読む。
 
@@ -104,7 +109,7 @@ required link は指定 section 内の Markdown link のみを数える。本文
 | `docs.stale_claim` | stale claim | `review_after` を過ぎた structured claim | page、claim id、date |
 | `docs.duplicate_concept` | duplicated concept | 同一 normalized title または alias が複数 page に存在する | pages、normalized key |
 | `docs.contradiction` | contradiction | `*.llmwiki.yaml` の `contradicts` relation または同一 claim id の不一致 | pages、claim ids |
-| `docs.index_log_drift` | index/log drift | page が追加・削除されたが `index.md` または `log.md` に反映されていない | page、expected update |
+| `docs.index_log_drift` | index/log drift | page が追加・削除されたが `index.md`、または運用している `log.md` に反映されていない | page、expected update |
 | `docs.unknown_top_level_key` | unknown top-level key | frontmatter の top-level key が既定 schema になく、`llmwiki` namespace 外にある。read は許容し、lint は warning とする | page、key |
 
 ### claim 検出の初期範囲
@@ -217,12 +222,17 @@ CI に載せる場合の初期 gate は以下に限定する。
 - `graph.missing_required_link` は `warning`。
 - `graph.orphan_page` は `warning`。
 - `graph.unknown_relation` は `warning`。
+- `graph.invalid_target_kind` は `warning`。
+- `graph.non_markdown_target_without_kind` は `warning`。
+- `graph.missing_relation_target` は `error`。
 - `graph.ambiguous_relation` は `warning`。
 - `graph.superseded_without_target` は `warning`。
 - `docs.index_log_drift` は `warning`。
 - `docs.unknown_top_level_key` は `warning`。
 
 owner、reviewer、stale、duplicate、contradiction は初期 CI では warning とし、review queue に送る。これは誤検出時に正しい知識更新を止めないためである。
+
+`index.md` は bundle の必須入口であり、`log.md` は運用している bundle でのみ更新を要求する。
 
 ## 後続拡張
 

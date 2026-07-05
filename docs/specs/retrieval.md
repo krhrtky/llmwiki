@@ -26,9 +26,9 @@ related retrieval は次の順序で実行する。
 
 | Intent | 優先 relation | 用途 |
 | --- | --- | --- |
-| `answer_suggestion` | `answers`, `constrained_by`, `depends_on`, `decided_by`, `derived_from` | 回答案の根拠、制約、手順を取得する。 |
-| `impact_analysis` | reverse `implements`, reverse `constrained_by`, reverse `depends_on`, `supersedes` | policy や ADR 変更の影響範囲を取得する。 |
-| `propose` | `similar_to`, `specializes`, `contradicts`, `supersedes`, `derived_from`, `constrained_by` | 上位 scope へ提出する前に重複、矛盾、秘匿リスクを確認する。 |
+| `answer_suggestion` | `answers`, `constrained_by`, `depends_on`, `decided_by`, `derived_from`, `implemented_by`, `verified_by` | 回答案の根拠、制約、手順を取得する。 |
+| `impact_analysis` | reverse `implements`, reverse `implemented_by`, reverse `constrained_by`, reverse `depends_on`, `supersedes`, `enforced_by` | policy や ADR 変更の影響範囲を取得する。 |
+| `propose` | `similar_to`, `specializes`, `contradicts`, `supersedes`, `derived_from`, `constrained_by`, `distributed_as`, `verified_by` | 上位 scope へ提出する前に重複、矛盾、秘匿リスクを確認する。 |
 | `global_summary` | entity graph, community summary | org-level sensemaking と propose candidate discovery に使う。通常 retrieval の置き換えにしない。 |
 
 ## Relation Metadata
@@ -39,12 +39,13 @@ related retrieval は次の順序で実行する。
 relations:
   - type: constrained_by
     target: ../policy/identity-verification.md
+    target_kind: doc
     provenance: human
     confidence: high
     status: active
 ```
 
-`provenance` は `human`、`llm`、`embedding`、`parser` を基本とする。`status` は `active`、`proposed`、`deprecated` を基本とする。`similar_to` と `mentions` は recall 向上のために使い、公式な依存や制約として扱わない。
+`target_kind` は target の種別を示す補助情報で、`doc`、`code`、`test`、`skill`、`command`、`generated`、`external` を基本とする。Markdown target では省略時に `doc` とみなす。`provenance` は `human`、`llm`、`embedding`、`parser` を基本とする。`status` は `active`、`proposed`、`deprecated` を基本とする。`similar_to` と `mentions` は recall 向上のために使い、公式な依存や制約として扱わない。
 
 ## Access Filter
 
@@ -75,15 +76,21 @@ final_score =
 | Relation | Weight |
 | --- | ---: |
 | `constrained_by` | 1.00 |
+| `enforced_by` | 0.90 |
 | `decided_by` | 0.95 |
 | `answers` | 0.90 |
 | `depends_on` | 0.85 |
 | `implements` | 0.80 |
+| `implemented_by` | 0.80 |
 | `derived_from` | 0.75 |
 | `specializes` | 0.65 |
+| `verified_by` | 0.55 |
 | `mentions` | 0.40 |
 | `similar_to` | 0.30 |
+| `distributed_as` | 0.25 |
 | `related_to` | 0.15 |
+
+`enforced_by`、`implemented_by`、`verified_by`、`distributed_as` は docs↔implementation traceability と skill distribution のための relation として扱う。`enforced_by` は policy、guardrail、CI gate の強制を、`implemented_by` は requirement、spec、ADR の実装証跡を表す。`verified_by` は test、lint、review の検証を表し、`distributed_as` は skill や role skill の分配を表す。
 
 ## 初期 CLI/API 契約
 

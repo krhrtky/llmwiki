@@ -13,11 +13,11 @@ Accepted
 
 ## Context
 
-Agent が wiki 全体を一度に読むと context を浪費する。LLMWiki と OKF は `index.md` と `log.md` により段階的な探索と履歴理解を可能にする。
+Agent が wiki 全体を一度に読むと context を浪費する。LLMWiki と OKF は `index.md` を入口にし、必要な bundle では `log.md` で履歴理解を補助する。
 
 ## Decision
 
-各 bundle または重要 directory で `index.md` と `log.md` を使う。
+各 bundle または重要 directory で `index.md` を使う。`log.md` は履歴運用が必要な場合に使う予約ファイルとする。
 
 ## Alternatives
 
@@ -27,13 +27,14 @@ Agent が wiki 全体を一度に読むと context を浪費する。LLMWiki と
 
 ## Rationale
 
-`index.md` は内容指向の navigation、`log.md` は時系列の変更履歴として機能する。OKF でも予約ファイルとして扱われる。
+`index.md` は内容指向の navigation、`log.md` は時系列の変更履歴として機能する。OKF でも予約ファイルとして扱われるが、LLMWiki では log を必須にせず、必要な bundle だけに履歴管理を持たせる。
 
 ## Consequences
 
 - Positive: Agent が最初に読む入口を小さくできる。
 - Positive: 変更履歴と最近の作業を辿れる。
-- Negative: index と log の更新漏れを lint する必要がある。
+- Negative: index の更新漏れを lint する必要がある。
+- Negative: log を運用する bundle では更新漏れを lint する必要がある。
 
 ## Related Requirements
 

@@ -1,0 +1,16 @@
+relations:
+  - type: implemented_by
+    target: ../../src/lint.rs
+    target_kind: code
+  - type: implemented_by
+    target: ../../src/graph.rs
+    target_kind: code
+  - type: implemented_by
+    target: ../../src/sidecar.rs
+    target_kind: code
+  - type: verified_by
+    target: ../../tests/cli_golden.rs
+    target_kind: test
+  - type: verified_by
+    target: ../../.github/workflows/ci.yml
+    target_kind: code

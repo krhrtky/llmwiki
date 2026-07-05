@@ -18,6 +18,8 @@ llmwiki:
 - 適用対象は、`docs/` で管理する知識 bundle 内の Markdown ファイルである。
 - 非予約の `.md` ファイルは concept document として扱う。
 - 予約ファイルは `index.md` と `log.md` である。
+- `index.md` は bundle の入口として必須である。
+- `log.md` は予約ファイルだが必須ではない。履歴を運用する bundle でのみ置く。
 - 予約ファイルも parseable YAML frontmatter を持てる。
 - この profile は OKF v0.1 の最小規約を壊さず、LLMWiki 固有情報を `llmwiki` namespace に閉じ込める。
 
@@ -52,7 +54,8 @@ llmwiki:
 - `llmwiki.scope` は document の有効範囲を表す論理ラベルであり、保存場所そのものを意味しない。
 - unknown top-level key は read で許容し、writer は既存の unknown key を破壊してはならない。
 - unknown top-level key は lint warning の対象とする。
-- typed relation を frontmatter に持つ場合でも、それは補助 metadata であり、graph edge の正本は Markdown link である。
+- docs 間の navigation、根拠参照、bundle 内の graph edge の正本は Markdown link である。
+- implementation artifact への traceability の正本は page 隣接 sidecar の `relations[]` であり、typed relation はそこに置く補助 metadata とする。
 
 ### 4. scope 表現
 
@@ -67,11 +70,11 @@ llmwiki:
 
 ### 5. Markdown link rule
 
-- bundle 内の関係は Markdown link で表現する。
+- docs 間の navigation、bundle 内の graph edge、根拠参照は Markdown link で表現する。
 - 参照先が bundle 内にある場合は relative Markdown link を使う。
 - bundle 外の証拠は canonical URL または安定した外部参照先への Markdown link を使う。
 - relation を plain text だけで表現せず、graph edge として辿れる形にする。
-- typed relation を併記する場合でも、Markdown link を正本とする。
+- implementation artifact への traceability を表す typed relation は page 隣接 sidecar の `relations[]` に置き、Markdown link と責務を分ける。
 - broken link は lint 対象とする。
 
 ### 6. citation format
@@ -94,11 +97,12 @@ llmwiki:
 ### 7. index/log rule
 
 - 各 bundle の入口には `index.md` を置く。
-- 各 bundle の履歴には `log.md` を置く。
-- bundle を構成する directory が 5 件以上の page を持つ場合は、独自の `index.md` と `log.md` を持つ。
+- `log.md` は予約ファイルとして許容するが、必須ではない。
+- bundle を構成する directory が 5 件以上の page を持つ場合は、独自の `index.md` を持つ。
 - `index.md` と `log.md` は frontmatter を持てるが、concept document 扱いにはしない。
 - `index.md` は内容指向の navigation を担当し、`log.md` は時系列の変更履歴を担当する。
-- `index.md` と `log.md` の更新漏れは lint 対象とする。
+- `index.md` の更新漏れは lint 対象とする。
+- `log.md` の更新漏れは、`log.md` を運用している bundle に限り lint 対象とする。
 
 ### 8. raw source immutable 境界
 

@@ -48,6 +48,8 @@ pub struct GraphRelation {
     pub source: String,
     pub relation_type: String,
     pub target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_kind: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -215,6 +217,21 @@ pub struct IngestEvidenceMapEntry {
 pub struct CommandStatus {
     pub command: String,
     pub status: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillInstallResultEnvelope {
+    pub skill_install_result: SkillInstallResult,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillInstallResult {
+    pub generated_at: String,
+    pub status: String,
+    pub skill: String,
+    pub source_path: String,
+    pub install_path: String,
     pub message: String,
 }
 

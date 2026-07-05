@@ -55,6 +55,7 @@ policy:
 ```bash
 llmwiki ingest --workspace-root . --scope team docs/source.md
 llmwiki query --workspace-root . --question "What changed?" --scope team --content-level content --subject-kind user --subject-id alice --access-policy policy.yaml
+llmwiki related --workspace-root . --seed docs/procedure.md --scope team --operation answer_suggestion --content-level content --subject-kind user --subject-id alice --access-policy policy.yaml
 llmwiki file --workspace-root . --candidate drafts/query.md --scope team --owner alice --reviewer bob --confidence high --citation "docs/source.md#note" --access-policy-ref policy-1
 llmwiki graph --workspace-root .
 llmwiki redact --workspace-root . --target-scope team docs/source.md
@@ -65,11 +66,20 @@ llmwiki lint --workspace-root .
 
 - `ingest` は raw source から candidate を作ります。
 - `query` は read-only で、filing は自動実行しません。
+- `related` は seed page から relation graph を辿る read-only operation です。
 - `file` は `--candidate`、`--scope`、`--owner`、`--confidence`、`--citation`、`--access-policy-ref` を最低限使います。
 - `propose` は `--from-scope`、`--to-scope`、`--reviewer`、`--approver`、`--redaction-report` を使います。
 - `redact` は `--target-scope` を省略すると `hold` に倒れることがあります。
 - `graph` と `lint` は `paths` を省略すると workspace 全体を走査します。
 - `export` は `--scope` か page 側の scope 情報と `--access-policy` を使って出力を制御します。
+
+### Distribution Helper
+
+```bash
+llmwiki skill install --workspace-root . --codex-home ~/.codex
+```
+
+- `skill install` は `skills/llmwiki/SKILL.md` を Codex skill directory へ配置する配布補助です。
 
 ## Install
 

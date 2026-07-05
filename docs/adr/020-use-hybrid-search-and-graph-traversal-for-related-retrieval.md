@@ -53,14 +53,16 @@ GraphRAG は通常 retrieval の置き換えではなく、org-level sensemaking
 - Negative: relation vocabulary、traversal rule、score、access filter の仕様が必要になる。
 - Negative: vector search や LLM relation extraction は deterministic lint と別の品質管理が必要になる。
 
-## Open Questions
-
-- section chunk、BM25、embedding の最小 index schema をどこで固定するか。
-- relation proposal の human approval workflow を `file`、`propose`、または新 command に接続するか。
-
 ## Related Requirements
 
 - [Requirement 011](../requirements/011-graph-and-relation.md)
 - [Requirement 015](../requirements/015-query-and-filing.md)
 - [Requirement 008](../requirements/008-operation-aware-access-control.md)
 - [Requirement 014](../requirements/014-storage-boundary.md)
+
+## Related ADRs
+
+- [ADR 011](./011-start-with-file-and-cli-first.md)
+- [ADR 015](./015-store-typed-relations-in-llmwiki-sidecar.md)
+- [ADR 016](./016-finalize-access-policy-evaluation.md)
+- [ADR 021](./021-trace-docs-and-implementation-with-stable-evidence-links.md)

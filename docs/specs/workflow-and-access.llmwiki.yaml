@@ -1,0 +1,13 @@
+relations:
+  - type: implemented_by
+    target: ../../src/access.rs
+    target_kind: code
+  - type: implemented_by
+    target: ../../src/propose.rs
+    target_kind: code
+  - type: implemented_by
+    target: ../../src/redact.rs
+    target_kind: code
+  - type: verified_by
+    target: ../../tests/cli_golden.rs
+    target_kind: test

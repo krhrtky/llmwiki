@@ -1,0 +1,10 @@
+relations:
+  - type: distributed_as
+    target: ../../skills/llmwiki/SKILL.md
+    target_kind: skill
+  - type: implemented_by
+    target: llmwiki skill install
+    target_kind: command
+  - type: verified_by
+    target: ../../tests/cli_golden.rs
+    target_kind: test

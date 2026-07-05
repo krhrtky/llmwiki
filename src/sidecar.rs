@@ -2,6 +2,41 @@ use serde_yaml::{Mapping, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::markdown::resolve_markdown_target;
+
+pub const VALID_RELATIONS: &[&str] = &[
+    "depends_on",
+    "constrained_by",
+    "implements",
+    "implemented_by",
+    "verified_by",
+    "enforced_by",
+    "distributed_as",
+    "specializes",
+    "derived_from",
+    "answers",
+    "decided_by",
+    "contradicts",
+    "supersedes",
+    "superseded_by",
+    "related_to",
+    "example_of",
+    "mentions",
+    "similar_to",
+    "owned_by",
+    "reviewed_by",
+];
+
+pub const VALID_TARGET_KINDS: &[&str] = &[
+    "doc",
+    "code",
+    "test",
+    "skill",
+    "command",
+    "generated",
+    "external",
+];
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct PageSidecar {
     pub owner: Option<String>,
@@ -23,6 +58,7 @@ pub struct SidecarClaim {
 pub struct SidecarRelation {
     pub relation_type: String,
     pub target: Option<String>,
+    pub target_kind: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -161,16 +197,34 @@ fn read_relations(mapping: &Mapping) -> (Vec<SidecarRelation>, Vec<String>) {
             continue;
         };
         let target = get_non_empty_string(relation, "target").map(ToOwned::to_owned);
-        if target.is_none() {
-            issues.push(format!("relations[{index}] is missing non-empty target"));
-        }
         relations.push(SidecarRelation {
             relation_type: relation_type.to_string(),
             target,
+            target_kind: get_scalar_string(relation, "target_kind"),
         });
     }
 
     (relations, issues)
+}
+
+pub fn target_kind_is_valid(target_kind: &str) -> bool {
+    VALID_TARGET_KINDS.contains(&target_kind.trim())
+}
+
+pub fn relation_target_requires_kind(bundle_root: &Path, source_path: &Path, target: &str) -> bool {
+    let Some(resolved) = resolve_markdown_target(source_path, target) else {
+        return true;
+    };
+
+    if !resolved.starts_with(bundle_root) {
+        return true;
+    }
+
+    if resolved.extension().and_then(|ext| ext.to_str()) != Some("md") {
+        return true;
+    }
+
+    false
 }
 
 fn get_string<'a>(mapping: &'a Mapping, key: &str) -> Option<&'a str> {
