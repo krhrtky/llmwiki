@@ -1,5 +1,13 @@
+pub mod access;
 pub mod commands;
+pub mod export;
+pub mod file;
+pub mod graph;
+pub mod ingest;
 pub mod lint;
 pub mod markdown;
+pub mod propose;
+pub mod query;
+pub mod redact;
 pub mod report;
 pub mod sidecar;

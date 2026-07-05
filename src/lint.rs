@@ -5,6 +5,7 @@ use crate::markdown::{
 use crate::report::{Finding, LintReport, Severity};
 use crate::sidecar::{read_page_sidecar, read_workflow_sidecar, PageSidecar, WorkflowSidecar};
 use chrono::{NaiveDate, Utc};
+use serde_json::json;
 use serde_yaml::{Mapping, Value};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
@@ -87,7 +88,7 @@ pub fn lint_workspace(workspace_root: &Path, paths: &[PathBuf]) -> Result<LintRe
     let mut state = LintState::default();
 
     for path in markdown_paths {
-        lint_file(&root, &path, &mut findings, &mut state);
+        lint_file(&root, &bundle_root, &path, &mut findings, &mut state);
     }
     state.finish(&mut findings);
 
@@ -193,6 +194,11 @@ fn content_root(root: &Path) -> PathBuf {
 struct LintState {
     claim_values: HashMap<String, ClaimRecord>,
     relation_types: HashMap<(String, String), HashSet<String>>,
+    concept_pages: HashSet<String>,
+    inbound_links: HashMap<String, HashSet<String>>,
+    title_keys: HashMap<String, Vec<String>>,
+    directories: HashMap<String, DirectoryState>,
+    spec_required_link_candidates: HashSet<String>,
 }
 
 #[derive(Debug)]
@@ -201,7 +207,93 @@ struct ClaimRecord {
     value: Option<String>,
 }
 
+#[derive(Debug, Default)]
+struct DirectoryState {
+    pages: HashSet<String>,
+    has_index: bool,
+    has_log: bool,
+    index_links: HashSet<String>,
+    log_links: HashSet<String>,
+    log_text: String,
+}
+
 impl LintState {
+    fn record_reserved_file(
+        &mut self,
+        root: &Path,
+        path: &Path,
+        document: &crate::markdown::MarkdownDocument,
+    ) {
+        let relative = relative_path(root, path);
+        let directory = directory_key(&relative);
+        let entry = self.directories.entry(directory).or_default();
+        match path.file_name().and_then(|name| name.to_str()) {
+            Some("index.md") => entry.has_index = true,
+            Some("log.md") => {
+                entry.has_log = true;
+                entry.log_text = document.body.to_lowercase();
+            }
+            _ => {}
+        }
+    }
+
+    fn record_concept_page(
+        &mut self,
+        root: &Path,
+        path: &Path,
+        document: &crate::markdown::MarkdownDocument,
+    ) {
+        let relative = relative_path(root, path);
+        self.concept_pages.insert(relative.clone());
+        self.directories
+            .entry(directory_key(&relative))
+            .or_default()
+            .pages
+            .insert(relative.clone());
+
+        if let Some(key) = normalized_concept_key(path, document) {
+            self.title_keys.entry(key).or_default().push(relative);
+        }
+    }
+
+    fn record_links(
+        &mut self,
+        root: &Path,
+        source_path: &Path,
+        links: &[crate::markdown::MarkdownLink],
+    ) {
+        let source = relative_path(root, source_path);
+        let source_directory = directory_key(&source);
+
+        for link in links {
+            let Some(target_path) = resolve_markdown_target(source_path, &link.target) else {
+                continue;
+            };
+            let target = relative_path(root, &target_path);
+            if source != target {
+                self.inbound_links
+                    .entry(target.clone())
+                    .or_default()
+                    .insert(source.clone());
+            }
+
+            if source.ends_with("index.md") {
+                self.directories
+                    .entry(source_directory.clone())
+                    .or_default()
+                    .index_links
+                    .insert(target.clone());
+            }
+            if source.ends_with("log.md") {
+                self.directories
+                    .entry(source_directory.clone())
+                    .or_default()
+                    .log_links
+                    .insert(target);
+            }
+        }
+    }
+
     fn record_claim(
         &mut self,
         claim_id: &str,
@@ -247,6 +339,130 @@ impl LintState {
     }
 
     fn finish(self, findings: &mut Vec<Finding>) {
+        for page in &self.concept_pages {
+            if self
+                .inbound_links
+                .get(page)
+                .is_some_and(|sources| !sources.is_empty())
+            {
+                continue;
+            }
+            findings.push(Finding::new(
+                "graph.orphan_page",
+                Severity::Warning,
+                page,
+                1,
+                "concept page is not linked from index.md or another page",
+                true,
+                "page_owner が index.md または関連 page からの Markdown link を追加する",
+            )
+            .with_details(json!({
+                "page": page,
+                "candidate_parent": format!("{}/index.md", directory_key(page)).trim_start_matches('/'),
+            })));
+        }
+
+        for (key, pages) in self.title_keys {
+            if pages.len() < 2 {
+                continue;
+            }
+            findings.push(
+                Finding::new(
+                    "docs.duplicate_concept",
+                    Severity::Warning,
+                    pages[0].clone(),
+                    1,
+                    format!(
+                        "normalized concept key {key} is used by multiple pages: {}",
+                        pages.join(", ")
+                    ),
+                    true,
+                    "domain_owner が重複概念を統合または明示的に分離する",
+                )
+                .with_details(json!({
+                    "normalized_key": key,
+                    "pages": pages,
+                })),
+            );
+        }
+
+        for (directory, state) in &self.directories {
+            if state.pages.len() < 5 {
+                continue;
+            }
+            if !state.has_index {
+                findings.push(
+                    Finding::new(
+                        "docs.index_log_drift",
+                        Severity::Warning,
+                        format!("{directory}/index.md").trim_start_matches('/'),
+                        1,
+                        "directory with 5 or more concept pages is missing index.md",
+                        true,
+                        "directory の navigation 用 index.md を追加する",
+                    )
+                    .with_details(json!({
+                        "expected_update": "add_index",
+                        "directory": directory,
+                    })),
+                );
+            }
+            if !state.has_log {
+                findings.push(
+                    Finding::new(
+                        "docs.index_log_drift",
+                        Severity::Warning,
+                        format!("{directory}/log.md").trim_start_matches('/'),
+                        1,
+                        "directory with 5 or more concept pages is missing log.md",
+                        true,
+                        "directory の履歴用 log.md を追加する",
+                    )
+                    .with_details(json!({
+                        "expected_update": "add_log",
+                        "directory": directory,
+                    })),
+                );
+            }
+            for page in &state.pages {
+                let linked_from_index = state.index_links.contains(page);
+                let reflected_in_log =
+                    state.log_links.contains(page) || log_mentions_page(&state.log_text, page);
+                if linked_from_index || reflected_in_log {
+                    continue;
+                }
+                findings.push(Finding::new(
+                    "docs.index_log_drift",
+                    Severity::Warning,
+                    page,
+                    1,
+                    "concept page is not reflected in directory index.md and log.md",
+                    true,
+                    "page_owner が index.md の navigation と log.md の変更履歴に page を反映する",
+                )
+                .with_details(json!({
+                    "expected_update": "update_index_or_log",
+                    "page": page,
+                })));
+            }
+        }
+
+        for page in self.spec_required_link_candidates {
+            let directory = directory_key(&page);
+            let linked_from_index = self
+                .directories
+                .get(&directory)
+                .is_some_and(|state| state.index_links.contains(&page));
+            if linked_from_index {
+                continue;
+            }
+            findings.push(missing_required_link_finding(
+                &page,
+                "spec",
+                &["requirement", "ADR"],
+            ));
+        }
+
         for ((source, target), relation_types) in self.relation_types {
             if relation_types.len() < 2 {
                 continue;
@@ -270,7 +486,13 @@ impl LintState {
     }
 }
 
-fn lint_file(root: &Path, path: &Path, findings: &mut Vec<Finding>, state: &mut LintState) {
+fn lint_file(
+    root: &Path,
+    bundle_root: &Path,
+    path: &Path,
+    findings: &mut Vec<Finding>,
+    state: &mut LintState,
+) {
     let relative = relative_path(root, path);
     let content = match fs::read_to_string(path) {
         Ok(content) => content,
@@ -305,9 +527,13 @@ fn lint_file(root: &Path, path: &Path, findings: &mut Vec<Finding>, state: &mut 
     };
 
     if is_reserved_file(path) {
-        lint_links(root, path, &document.links, findings);
+        state.record_reserved_file(root, path, &document);
+        state.record_links(root, path, &document.links);
+        lint_links(root, bundle_root, path, &document.links, findings);
         return;
     }
+    state.record_concept_page(root, path, &document);
+    state.record_links(root, path, &document.links);
 
     let sidecar = read_page_sidecar_for_lint(root, path, &relative, findings);
     let workflow = read_workflow_sidecar_for_lint(root, path, &relative, findings);
@@ -322,7 +548,7 @@ fn lint_file(root: &Path, path: &Path, findings: &mut Vec<Finding>, state: &mut 
             false,
             "type と llmwiki.scope を含む YAML frontmatter を追加する",
         ));
-        lint_links(root, path, &document.links, findings);
+        lint_links(root, bundle_root, path, &document.links, findings);
         return;
     };
 
@@ -336,7 +562,7 @@ fn lint_file(root: &Path, path: &Path, findings: &mut Vec<Finding>, state: &mut 
             false,
             "frontmatter を key-value mapping に修正する",
         ));
-        lint_links(root, path, &document.links, findings);
+        lint_links(root, bundle_root, path, &document.links, findings);
         return;
     };
 
@@ -352,8 +578,9 @@ fn lint_file(root: &Path, path: &Path, findings: &mut Vec<Finding>, state: &mut 
     lint_frontmatter_claims(&relative, mapping, state, findings);
     lint_sidecar_claims(&relative, sidecar.as_ref(), state, findings);
     lint_sidecar_relations(root, path, &relative, sidecar.as_ref(), state, findings);
+    lint_required_links(&relative, &document, state, findings);
     lint_published_citation(&relative, mapping, &document, findings);
-    lint_links(root, path, &document.links, findings);
+    lint_links(root, bundle_root, path, &document.links, findings);
 }
 
 fn read_page_sidecar_for_lint(
@@ -797,6 +1024,133 @@ fn lint_published_citation(
     }
 }
 
+fn lint_required_links(
+    relative: &str,
+    document: &crate::markdown::MarkdownDocument,
+    state: &mut LintState,
+    findings: &mut Vec<Finding>,
+) {
+    let required = if relative.starts_with("docs/requirements/") {
+        Some((
+            "requirement",
+            &["Related ADRs"][..],
+            &["../adr/", "../specs/"][..],
+        ))
+    } else if relative.starts_with("docs/adr/") && relative != "docs/adr/index.md" {
+        Some((
+            "ADR",
+            &["Related Requirements"][..],
+            &["../requirements/"][..],
+        ))
+    } else if relative.starts_with("docs/specs/") && relative != "docs/specs/index.md" {
+        Some((
+            "spec",
+            &["Related Requirements", "Related ADRs"][..],
+            &["../requirements/", "../adr/"][..],
+        ))
+    } else {
+        None
+    };
+
+    let Some((source_type, section_names, target_prefixes)) = required else {
+        return;
+    };
+
+    let has_required_section = section_exists(&document.body, section_names);
+    if section_has_required_link(&document.body, section_names, target_prefixes) {
+        return;
+    }
+
+    if source_type == "spec"
+        && !has_required_section
+        && document_has_required_link(document, target_prefixes)
+    {
+        state
+            .spec_required_link_candidates
+            .insert(relative.to_string());
+        return;
+    }
+
+    findings.push(missing_required_link_finding(
+        relative,
+        source_type,
+        if source_type == "requirement" {
+            &["ADR", "spec"]
+        } else if source_type == "ADR" {
+            &["requirement"]
+        } else {
+            &["requirement", "ADR"]
+        },
+    ));
+}
+
+fn missing_required_link_finding(
+    path: &str,
+    source_type: &str,
+    expected_link_types: &[&str],
+) -> Finding {
+    Finding::new(
+        "graph.missing_required_link",
+        Severity::Warning,
+        path,
+        1,
+        format!("{source_type} page is missing required related link section"),
+        true,
+        "関連 requirement、ADR、または spec への Markdown link を required section に追加する",
+    )
+    .with_details(json!({
+        "page": path,
+        "expected_link_types": expected_link_types,
+    }))
+}
+
+fn section_has_required_link(body: &str, section_names: &[&str], target_prefixes: &[&str]) -> bool {
+    let mut in_required_section = false;
+
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("## ") {
+            let heading = trimmed.trim_start_matches('#').trim();
+            in_required_section = section_names.contains(&heading);
+            continue;
+        }
+        if in_required_section && trimmed.starts_with('#') {
+            in_required_section = false;
+            continue;
+        }
+        if !in_required_section {
+            continue;
+        }
+        if target_prefixes
+            .iter()
+            .any(|prefix| trimmed.contains(&format!("]({prefix}")))
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn section_exists(body: &str, section_names: &[&str]) -> bool {
+    body.lines().any(|line| {
+        let trimmed = line.trim();
+        trimmed.starts_with("## ")
+            && section_names.contains(&trimmed.trim_start_matches('#').trim())
+    })
+}
+
+fn document_has_required_link(
+    document: &crate::markdown::MarkdownDocument,
+    target_prefixes: &[&str],
+) -> bool {
+    document.links.iter().any(|link| {
+        target_prefixes
+            .iter()
+            .any(|prefix| link.target.starts_with(prefix))
+    })
+}
+
 fn llmwiki_string<'a>(mapping: &'a Mapping, key: &str) -> Option<&'a str> {
     get_mapping(mapping, "llmwiki").and_then(|llmwiki| get_string(llmwiki, key))
 }
@@ -821,6 +1175,7 @@ fn is_org_publish_candidate(
 
 fn lint_links(
     root: &Path,
+    bundle_root: &Path,
     source_path: &Path,
     links: &[crate::markdown::MarkdownLink],
     findings: &mut Vec<Finding>,
@@ -832,7 +1187,7 @@ fn lint_links(
             continue;
         };
         let target_is_valid = fs::canonicalize(&target_path)
-            .map(|canonical| canonical.starts_with(root))
+            .map(|canonical| canonical.starts_with(bundle_root))
             .unwrap_or(false);
         if !target_is_valid {
             findings.push(Finding::new(
@@ -884,6 +1239,64 @@ fn relative_path(root: &Path, path: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/")
+}
+
+fn directory_key(relative: &str) -> String {
+    Path::new(relative)
+        .parent()
+        .map(|path| path.to_string_lossy().replace('\\', "/"))
+        .filter(|path| path != ".")
+        .unwrap_or_default()
+}
+
+fn normalized_concept_key(
+    path: &Path,
+    document: &crate::markdown::MarkdownDocument,
+) -> Option<String> {
+    let raw = document
+        .headings
+        .iter()
+        .find(|heading| heading.level == 1)
+        .map(|heading| heading.text.as_str())
+        .or_else(|| path.file_stem().and_then(|stem| stem.to_str()))?;
+    let normalized = normalize_key(raw);
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn normalize_key(value: &str) -> String {
+    let mut key = String::new();
+    let mut previous_separator = false;
+
+    for character in value.chars().flat_map(char::to_lowercase) {
+        if character.is_alphanumeric() {
+            key.push(character);
+            previous_separator = false;
+        } else if !previous_separator && !key.is_empty() {
+            key.push('-');
+            previous_separator = true;
+        }
+    }
+
+    key.trim_matches('-').to_string()
+}
+
+fn log_mentions_page(log_text: &str, page: &str) -> bool {
+    let file_name = Path::new(page)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(page)
+        .to_lowercase();
+    let stem = Path::new(&file_name)
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or(&file_name)
+        .to_lowercase();
+
+    log_text.contains(&file_name) || (!stem.is_empty() && log_text.contains(&stem))
 }
 
 #[cfg(test)]
@@ -1132,6 +1545,25 @@ mod tests {
         let error = lint_workspace(dir.path(), &[PathBuf::from("AGENTS.md")]).unwrap_err();
 
         assert!(matches!(error, LintError::InvalidWorkspace { .. }));
+    }
+
+    #[test]
+    fn relative_link_outside_docs_bundle_is_broken() {
+        let dir = tempdir().unwrap();
+        fs::create_dir(dir.path().join("docs")).unwrap();
+        write_file(dir.path().join("AGENTS.md"), "# Agents\n");
+        write_file(dir.path().join("docs").join("index.md"), "# Index\n");
+        write_file(
+            dir.path().join("docs").join("page.md"),
+            "---\ntype: concept\nllmwiki:\n  scope: personal\n---\n[Agents](../AGENTS.md)\n",
+        );
+
+        let report = lint_workspace(dir.path(), &[]).unwrap();
+
+        assert!(report
+            .findings
+            .iter()
+            .any(|finding| finding.id == "graph.broken_link" && finding.path == "docs/page.md"));
     }
 
     #[test]
@@ -1489,6 +1921,231 @@ mod tests {
             .iter()
             .any(|finding| finding.id == "parse_failure"
                 && finding.message.contains("outside workspace root")));
+    }
+
+    #[test]
+    fn concept_page_without_inbound_link_is_orphan() {
+        let dir = tempdir().unwrap();
+        write_file(dir.path().join("index.md"), "# Index\n");
+        write_file(
+            dir.path().join("page.md"),
+            "---\ntype: concept\nllmwiki:\n  scope: personal\n---\n# Page\n",
+        );
+
+        let report = lint_workspace(dir.path(), &[]).unwrap();
+
+        assert!(report
+            .findings
+            .iter()
+            .any(|finding| finding.id == "graph.orphan_page" && finding.path == "page.md"));
+    }
+
+    #[test]
+    fn index_link_satisfies_orphan_check() {
+        let dir = tempdir().unwrap();
+        write_file(
+            dir.path().join("index.md"),
+            "# Index\n\n- [Page](page.md)\n",
+        );
+        write_file(
+            dir.path().join("page.md"),
+            "---\ntype: concept\nllmwiki:\n  scope: personal\n---\n# Page\n",
+        );
+
+        let report = lint_workspace(dir.path(), &[]).unwrap();
+
+        assert!(!report
+            .findings
+            .iter()
+            .any(|finding| finding.id == "graph.orphan_page" && finding.path == "page.md"));
+    }
+
+    #[test]
+    fn self_link_does_not_satisfy_orphan_check() {
+        let dir = tempdir().unwrap();
+        write_file(dir.path().join("index.md"), "# Index\n");
+        write_file(
+            dir.path().join("page.md"),
+            "---\ntype: concept\nllmwiki:\n  scope: personal\n---\n# Page\n\n[Self](page.md)\n",
+        );
+
+        let report = lint_workspace(dir.path(), &[]).unwrap();
+
+        assert!(report
+            .findings
+            .iter()
+            .any(|finding| finding.id == "graph.orphan_page" && finding.path == "page.md"));
+    }
+
+    #[test]
+    fn requirement_missing_related_adr_link_is_required_link_warning() {
+        let dir = tempdir().unwrap();
+        fs::create_dir(dir.path().join("docs")).unwrap();
+        fs::create_dir_all(dir.path().join("docs").join("requirements")).unwrap();
+        write_file(dir.path().join("AGENTS.md"), "# Agents\n");
+        write_file(dir.path().join("docs").join("index.md"), "# Index\n");
+        write_file(
+            dir.path()
+                .join("docs")
+                .join("requirements")
+                .join("001-example.md"),
+            "---\ntype: requirement\nllmwiki:\n  scope: org\n---\n# Requirement\n\n## Related ADRs\n\nNone.\n",
+        );
+
+        let report = lint_workspace(dir.path(), &[]).unwrap();
+
+        assert!(report
+            .findings
+            .iter()
+            .any(|finding| finding.id == "graph.missing_required_link"
+                && finding.path == "docs/requirements/001-example.md"));
+    }
+
+    #[test]
+    fn requirement_related_adr_link_satisfies_required_link() {
+        let dir = tempdir().unwrap();
+        fs::create_dir(dir.path().join("docs")).unwrap();
+        fs::create_dir_all(dir.path().join("docs").join("requirements")).unwrap();
+        write_file(dir.path().join("AGENTS.md"), "# Agents\n");
+        write_file(dir.path().join("docs").join("index.md"), "# Index\n");
+        write_file(
+            dir.path()
+                .join("docs")
+                .join("requirements")
+                .join("001-example.md"),
+            "---\ntype: requirement\nllmwiki:\n  scope: org\n---\n# Requirement\n\n## Related ADRs\n\n- [ADR](../adr/001-example.md)\n",
+        );
+
+        let report = lint_workspace(dir.path(), &[]).unwrap();
+
+        assert!(!report
+            .findings
+            .iter()
+            .any(|finding| finding.id == "graph.missing_required_link"
+                && finding.path == "docs/requirements/001-example.md"));
+    }
+
+    #[test]
+    fn spec_body_link_and_specs_index_link_suppress_required_link_warning() {
+        let dir = tempdir().unwrap();
+        fs::create_dir(dir.path().join("docs")).unwrap();
+        fs::create_dir_all(dir.path().join("docs").join("specs")).unwrap();
+        write_file(dir.path().join("AGENTS.md"), "# Agents\n");
+        write_file(dir.path().join("docs").join("index.md"), "# Index\n");
+        write_file(
+            dir.path().join("docs").join("specs").join("index.md"),
+            "# Specs\n\n- [Spec](example.md)\n",
+        );
+        write_file(
+            dir.path().join("docs").join("specs").join("example.md"),
+            "---\ntype: spec\nllmwiki:\n  scope: org\n---\n# Spec\n\nSee [Requirement](../requirements/001-example.md).\n",
+        );
+
+        let report = lint_workspace(dir.path(), &[]).unwrap();
+
+        assert!(!report
+            .findings
+            .iter()
+            .any(|finding| finding.id == "graph.missing_required_link"
+                && finding.path == "docs/specs/example.md"));
+    }
+
+    #[test]
+    fn spec_required_section_without_link_is_not_suppressed_by_body_link() {
+        let dir = tempdir().unwrap();
+        fs::create_dir(dir.path().join("docs")).unwrap();
+        fs::create_dir_all(dir.path().join("docs").join("specs")).unwrap();
+        write_file(dir.path().join("AGENTS.md"), "# Agents\n");
+        write_file(dir.path().join("docs").join("index.md"), "# Index\n");
+        write_file(
+            dir.path().join("docs").join("specs").join("index.md"),
+            "# Specs\n\n- [Spec](example.md)\n",
+        );
+        write_file(
+            dir.path().join("docs").join("specs").join("example.md"),
+            "---\ntype: spec\nllmwiki:\n  scope: org\n---\n# Spec\n\nSee [Requirement](../requirements/001-example.md).\n\n## Related Requirements\n\nNone.\n",
+        );
+
+        let report = lint_workspace(dir.path(), &[]).unwrap();
+
+        assert!(report
+            .findings
+            .iter()
+            .any(|finding| finding.id == "graph.missing_required_link"
+                && finding.path == "docs/specs/example.md"));
+    }
+
+    #[test]
+    fn duplicate_concept_uses_normalized_h1() {
+        let dir = tempdir().unwrap();
+        write_file(
+            dir.path().join("index.md"),
+            "# Index\n\n- [First](first.md)\n- [Second](second.md)\n",
+        );
+        for name in ["first.md", "second.md"] {
+            write_file(
+                dir.path().join(name),
+                "---\ntype: concept\nllmwiki:\n  scope: personal\n---\n# Shared Concept\n",
+            );
+        }
+
+        let report = lint_workspace(dir.path(), &[]).unwrap();
+
+        assert!(report
+            .findings
+            .iter()
+            .any(|finding| finding.id == "docs.duplicate_concept"));
+    }
+
+    #[test]
+    fn directory_with_five_pages_requires_index_log_updates() {
+        let dir = tempdir().unwrap();
+        let section = dir.path().join("section");
+        fs::create_dir(&section).unwrap();
+        write_file(dir.path().join("index.md"), "# Index\n");
+        write_file(
+            section.join("index.md"),
+            "# Section\n\n- [Page 1](page1.md)\n",
+        );
+        write_file(section.join("log.md"), "# Log\n\n- [Page 1](page1.md)\n");
+        for index in 1..=5 {
+            write_file(
+                section.join(format!("page{index}.md")),
+                &format!("---\ntype: concept\nllmwiki:\n  scope: personal\n---\n# Page {index}\n"),
+            );
+        }
+
+        let report = lint_workspace(dir.path(), &[]).unwrap();
+
+        assert!(report
+            .findings
+            .iter()
+            .any(|finding| finding.id == "docs.index_log_drift"
+                && finding.path == "section/page2.md"));
+    }
+
+    #[test]
+    fn log_text_can_reflect_index_log_drift_without_direct_link() {
+        let dir = tempdir().unwrap();
+        let section = dir.path().join("section");
+        fs::create_dir(&section).unwrap();
+        write_file(dir.path().join("index.md"), "# Index\n");
+        write_file(section.join("index.md"), "# Section\n");
+        write_file(section.join("log.md"), "# Log\n\n- Added page2.\n");
+        for index in 1..=5 {
+            write_file(
+                section.join(format!("page{index}.md")),
+                &format!("---\ntype: concept\nllmwiki:\n  scope: personal\n---\n# Page {index}\n"),
+            );
+        }
+
+        let report = lint_workspace(dir.path(), &[]).unwrap();
+
+        assert!(!report
+            .findings
+            .iter()
+            .any(|finding| finding.id == "docs.index_log_drift"
+                && finding.path == "section/page2.md"));
     }
 
     fn write_file(path: PathBuf, content: &str) {
