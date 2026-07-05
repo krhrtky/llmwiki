@@ -213,11 +213,11 @@ CI に載せる場合の初期 gate は以下に限定する。
 
 owner、reviewer、stale、duplicate、contradiction は初期 CI では warning とし、review queue に送る。これは誤検出時に正しい知識更新を止めないためである。
 
-## 未決事項
+## 後続拡張
 
-- redaction scan の実装方式。
-- 本文意味比較による contradiction / stale 検出の実装方式。
-- source 更新に基づく stale claim 検出の metadata contract。
+- redaction scan の初期実装方式は [ADR 017](../adr/017-use-rule-based-redaction-scan-initially.md) に従う。
+- 本文意味比較による contradiction / stale 検出と source 更新に基づく stale claim 検出は [ADR 018](../adr/018-defer-semantic-maintenance-detection.md) に従い、初期完成の必須範囲に含めない。
+- source revision metadata contract と semantic comparison の実装方式は後続 ADR とする。
 
 ## Related Requirements
 
@@ -232,3 +232,5 @@ owner、reviewer、stale、duplicate、contradiction は初期 CI では warning
 - [ADR 011: Start with File and CLI First](../adr/011-start-with-file-and-cli-first.md)
 - [ADR 014: Finalize M5 Maintenance Contract](../adr/014-finalize-m5-maintenance-contract.md)
 - [ADR 015: Store Typed Relations in LLMWiki Sidecar](../adr/015-store-typed-relations-in-llmwiki-sidecar.md)
+- [ADR 017: Use Rule-Based Redaction Scan Initially](../adr/017-use-rule-based-redaction-scan-initially.md)
+- [ADR 018: Defer Semantic Maintenance Detection](../adr/018-defer-semantic-maintenance-detection.md)
