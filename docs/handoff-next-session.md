@@ -43,6 +43,25 @@ llmwiki:
   - CLI golden tests。
   - README / usage / release 手順。
   - GitHub Actions CI。
+- `private` scope 判断:
+  - `private` は独立 scope として追加しない。
+  - 個人/private 相当の知識は `personal` と operation-aware access control で扱う。
+  - 判断は ADR 019、Requirement 004、glossary、format profile に反映済み。
+- related retrieval 外化:
+  - grep ではなく search、graph traversal、access filter、rerank/explain に分ける方針を ADR 020 に記録済み。
+  - Post-M5 の実装仕様は `docs/specs/retrieval.md` に外化済み。
+  - Post-M5 の最初の固定 CLI/API は `llmwiki related` とし、`llmwiki retrieve` は後続に送る判断を ADR 020 と retrieval 仕様に記録済み。
+  - relation vocabulary に `mentions` と `similar_to` を追加済み。
+- related retrieval 実装:
+  - `llmwiki related <seed>` を追加済み。
+  - Markdown link と `*.llmwiki.yaml` relations から作る file-first derived graph index を入力にする。
+  - access check は seed、edge、neighbor、section body の各段階で行う。
+  - output は `related_result` JSON envelope とし、relation path と access decision を含める。
+  - DB、vector DB、OpenSearch、Neo4j、GraphRAG は必須にしていない。
+- golden tests 保守性改善:
+  - `query` success golden は `score` の exact 値を固定せず、decision log は JSON 文字列の exact 比較ではなく構造検証へ変更済み。
+  - `export` success golden は decision log を構造検証へ変更済み。
+  - `related` success / hold golden tests を追加済み。
 
 ## 検証済み
 
@@ -56,7 +75,7 @@ cargo build
 target/debug/llmwiki lint --workspace-root .
 ```
 
-`cargo test` には `tests/cli_golden.rs` の 16 tests を含む。
+`cargo test` には `tests/cli_golden.rs` の 18 tests を含む。
 
 ## 次にやるべきこと
 
@@ -66,17 +85,16 @@ target/debug/llmwiki lint --workspace-root .
 - GitHub Actions 上で workflow が通ることを確認する。
 - `README.md` の command examples を、実際の小さな workspace で一通り手動 smoke する。
 
-### 2. scope model の後続判断
+### 2. retrieval の後続実装
 
-- `private` scope を追加するか判断する。
-- 追加する場合は ADR 002、Requirement 004、format profile、CLI validation、lint/export/query tests をまとめて更新する。
-- 追加しない場合は、`personal` が個人/private 相当であることを glossary または scope model に明記する。
+- `llmwiki retrieve` の lexical seed selection を設計する。
+- section seed、section chunk、BM25、embedding index の最小 schema を固定する。
+- relation proposal の human approval workflow を `file`、`propose`、または新 command のどれに接続するか決める。
 
-### 3. golden tests の保守性改善
+### 3. retrieval の後続 ADR/設計
 
-- 現状の `query` / `export` success golden は `score` や stringified decision log まで固定している。
-- contract ではなく実装詳細に寄った値が増えた場合、正規化または構造化比較へ寄せる。
-- ただし現時点では 8 command の success / non-success contract は固定済みであり、release blocker ではない。
+- section chunk、BM25、embedding index、relation proposal workflow は ADR 020 の Open Questions に残っている。
+- PostgreSQL + pgvector、OpenSearch / Elasticsearch、Neo4j、GraphRAG は derived index adapter 候補であり、SoT にはしない。
 
 ### 4. release / PR 作業
 

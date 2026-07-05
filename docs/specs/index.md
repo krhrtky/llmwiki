@@ -8,6 +8,7 @@
 2. [CLI/API の仕様](./cli-api.md)
 3. [Workflow and Access の仕様](./workflow-and-access.md)
 4. [Maintenance の仕様](./maintenance.md)
+5. [Related Retrieval の仕様](./retrieval.md)
 
 ## Milestone 対応
 
@@ -17,3 +18,4 @@
 | M3 CLI/API | [cli-api.md](./cli-api.md) |
 | M4 Workflow | [workflow-and-access.md](./workflow-and-access.md) |
 | M5 Maintenance | [maintenance.md](./maintenance.md) |
+| Post-M5 Retrieval | [retrieval.md](./retrieval.md) |

@@ -9,5 +9,6 @@ pub mod markdown;
 pub mod propose;
 pub mod query;
 pub mod redact;
+pub mod related;
 pub mod report;
 pub mod sidecar;

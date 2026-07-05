@@ -60,6 +60,7 @@ llmwiki:
 - `team` は実務に耐える再利用可能な局所知識を表す。
 - `org` は組織横断の正規知識、語彙、制約、ポリシー、公式判断を表す。
 - scope は `personal -> team -> org` の 3 層で表現する。
+- `private` は scope に追加しない。個人/private 相当の知識は `personal` とし、秘匿度、公開可否、operation ごとの参照可否は access policy と metadata で扱う。
 - `org` は全文中央集約ではない。scope は意味論であり、中央保存を要求しない。
 - `personal` の管理主体は作成者個人、`team` の管理主体は対象チーム、`org` の管理主体は組織横断の reviewer または owner とする。
 - 下位 scope から上位 scope へ移す場合は、直接 copy せず propose workflow を通す。

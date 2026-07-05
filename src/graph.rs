@@ -25,6 +25,8 @@ const VALID_RELATIONS: &[&str] = &[
     "superseded_by",
     "related_to",
     "example_of",
+    "mentions",
+    "similar_to",
     "owned_by",
     "reviewed_by",
 ];

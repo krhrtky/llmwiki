@@ -71,9 +71,13 @@ claims:
 relations:
   - type: depends_on
     target: docs/example.md
+    # optional for retrieval-oriented relation metadata
+    provenance: human
+    confidence: high
+    status: active
 ```
 
-`value` は optional とし、top-level `relations[]` は `type` と `target` のみを持つ。lint は top-level `relations[]` を relation 入力として読み、frontmatter、本文、`page.workflow.yaml`、または `relations[]` 以外の metadata は graph relation 判定の入力にしない。
+`value` は optional とし、top-level `relations[]` は `type` と `target` のみを初期 lint の必須項目とする。`provenance`、`confidence`、`status` は retrieval のための optional metadata であり、初期 lint は unknown field として拒否しない。lint は top-level `relations[]` を relation 入力として読み、frontmatter、本文、`page.workflow.yaml`、または `relations[]` 以外の metadata は graph relation 判定の入力にしない。
 
 `graph.unknown_relation`、`graph.ambiguous_relation`、`graph.superseded_without_target` はこの sidecar relation を入力にする。`docs.contradiction` も explicit `contradicts` relation をこの sidecar から読む。
 
@@ -225,6 +229,7 @@ owner、reviewer、stale、duplicate、contradiction は初期 CI では warning
 - redaction scan の初期実装方式は [ADR 017](../adr/017-use-rule-based-redaction-scan-initially.md) に従う。
 - 本文意味比較による contradiction / stale 検出と source 更新に基づく stale claim 検出は [ADR 018](../adr/018-defer-semantic-maintenance-detection.md) に従い、初期完成の必須範囲に含めない。
 - source revision metadata contract と semantic comparison の実装方式は後続 ADR とする。
+- related retrieval の Post-M5 仕様は [Related Retrieval 仕様](./retrieval.md) に従う。
 
 ## Related Requirements
 
@@ -241,3 +246,4 @@ owner、reviewer、stale、duplicate、contradiction は初期 CI では warning
 - [ADR 015: Store Typed Relations in LLMWiki Sidecar](../adr/015-store-typed-relations-in-llmwiki-sidecar.md)
 - [ADR 017: Use Rule-Based Redaction Scan Initially](../adr/017-use-rule-based-redaction-scan-initially.md)
 - [ADR 018: Defer Semantic Maintenance Detection](../adr/018-defer-semantic-maintenance-detection.md)
+- [ADR 020: Use Hybrid Search and Graph Traversal for Related Retrieval](../adr/020-use-hybrid-search-and-graph-traversal-for-related-retrieval.md)

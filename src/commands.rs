@@ -6,10 +6,11 @@ use crate::lint::{lint_workspace, LintError};
 use crate::propose::{propose_workspace, ProposeError};
 use crate::query::{query_workspace, QueryError};
 use crate::redact::{redact_workspace, RedactError};
+use crate::related::{related_workspace, RelatedError, RelatedInput};
 use crate::report::{
     CommandStatus, CommandStatusEnvelope, ExportArtifactEnvelope, Finding, GraphIndexEnvelope,
     IngestResultEnvelope, LintReport, LintReportEnvelope, ProposalDraftEnvelope,
-    QueryResultEnvelope, Severity,
+    QueryResultEnvelope, RelatedResultEnvelope, Severity,
 };
 use chrono::Utc;
 use serde::Serialize;
@@ -99,6 +100,37 @@ pub fn run_query_command(
     ) {
         Ok(query_result) => to_value(QueryResultEnvelope { query_result })?,
         Err(error) => query_error_value(error),
+    };
+    Ok(result)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn run_related_command(
+    workspace_root: &Path,
+    seed: Option<PathBuf>,
+    operation: Option<String>,
+    scope: Option<String>,
+    content_level: Option<String>,
+    subject_kind: Option<String>,
+    subject_id: Option<String>,
+    access_policy_paths: Vec<PathBuf>,
+    depth: Option<usize>,
+    limit: Option<usize>,
+) -> Result<serde_json::Value, LintError> {
+    let result = match related_workspace(RelatedInput {
+        workspace_root: workspace_root.to_path_buf(),
+        seed,
+        operation,
+        scope,
+        content_level,
+        subject_kind,
+        subject_id,
+        access_policy_paths,
+        depth,
+        limit,
+    }) {
+        Ok(related_result) => to_value(RelatedResultEnvelope { related_result })?,
+        Err(error) => related_error_value(error),
     };
     Ok(result)
 }
@@ -322,6 +354,23 @@ fn query_error_value(error: QueryError) -> serde_json::Value {
                 "subject_kind": null,
                 "subject_id": null
             }
+        }
+    })
+}
+
+fn related_error_value(error: RelatedError) -> serde_json::Value {
+    serde_json::json!({
+        "related_result": {
+            "generated_at": Utc::now().to_rfc3339(),
+            "status": "error",
+            "message": error.to_string(),
+            "seed": "",
+            "operation": null,
+            "scope": null,
+            "content_level": null,
+            "depth": 0,
+            "results": [],
+            "decision_logs": []
         }
     })
 }

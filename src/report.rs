@@ -75,6 +75,55 @@ pub struct QueryResultEnvelope {
     pub query_result: QueryResult,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RelatedResultEnvelope {
+    pub related_result: RelatedResult,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RelatedResult {
+    pub generated_at: String,
+    pub status: String,
+    pub message: String,
+    pub seed: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_level: Option<String>,
+    pub depth: usize,
+    pub results: Vec<RelatedResultItem>,
+    pub decision_logs: Vec<AccessDecisionLog>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RelatedResultItem {
+    pub path: String,
+    pub title: String,
+    pub score: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    pub relation_paths: Vec<Vec<RelatedRelationStep>>,
+    pub access_decisions: Vec<RelatedAccessDecision>,
+    pub why: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelatedRelationStep {
+    pub from: String,
+    pub relation: String,
+    pub to: String,
+    pub source: String,
+    pub direction: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelatedAccessDecision {
+    pub stage: String,
+    pub log: AccessDecisionLog,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueryResult {
     pub generated_at: String,

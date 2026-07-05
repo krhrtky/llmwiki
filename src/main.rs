@@ -1,7 +1,7 @@
 use clap::{error::ErrorKind, Parser, Subcommand, ValueEnum};
 use llmwiki::commands::{
     run_export_command, run_file_command, run_graph_command, run_ingest_command, run_lint_command,
-    run_propose_command, run_query_command, run_redact_command,
+    run_propose_command, run_query_command, run_redact_command, run_related_command,
 };
 use std::path::PathBuf;
 
@@ -41,6 +41,29 @@ enum Command {
         subject_id: Option<String>,
         #[arg(long = "access-policy")]
         access_policy: Vec<PathBuf>,
+    },
+    Related {
+        #[arg(long, default_value = ".")]
+        workspace_root: PathBuf,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+        format: OutputFormat,
+        #[arg(long)]
+        operation: Option<String>,
+        #[arg(long)]
+        scope: Option<String>,
+        #[arg(long = "content-level")]
+        content_level: Option<String>,
+        #[arg(long = "subject-kind")]
+        subject_kind: Option<String>,
+        #[arg(long = "subject-id")]
+        subject_id: Option<String>,
+        #[arg(long = "access-policy")]
+        access_policy: Vec<PathBuf>,
+        #[arg(long)]
+        depth: Option<usize>,
+        #[arg(long)]
+        limit: Option<usize>,
+        seed: Option<PathBuf>,
     },
     File {
         #[arg(long, default_value = ".")]
@@ -244,6 +267,30 @@ fn main() {
             };
             Ok(value)
         }
+        Command::Related {
+            workspace_root,
+            seed,
+            operation,
+            scope,
+            content_level,
+            subject_kind,
+            subject_id,
+            access_policy,
+            depth,
+            limit,
+            ..
+        } => run_related_command(
+            &workspace_root,
+            seed,
+            operation,
+            scope,
+            content_level,
+            subject_kind,
+            subject_id,
+            access_policy,
+            depth,
+            limit,
+        ),
         Command::File {
             workspace_root,
             scope,

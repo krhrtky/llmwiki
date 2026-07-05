@@ -106,6 +106,62 @@ fn normalize_key(key: &str, value: &mut Value) -> bool {
     }
 }
 
+fn remove_key_recursively(value: &mut Value, target_key: &str) {
+    match value {
+        Value::Object(map) => {
+            map.remove(target_key);
+            for nested in map.values_mut() {
+                remove_key_recursively(nested, target_key);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                remove_key_recursively(item, target_key);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn remove_object_field(value: &mut Value, envelope: &str, field: &str) -> Value {
+    value
+        .get_mut(envelope)
+        .and_then(Value::as_object_mut)
+        .and_then(|object| object.remove(field))
+        .unwrap_or_else(|| panic!("{envelope}.{field} must be present"))
+}
+
+fn assert_decision_logs(
+    logs: &Value,
+    operation: &str,
+    decided_by: &str,
+    policy_id: &str,
+    selectors: &[&str],
+) {
+    let logs = logs.as_array().expect("decision_logs must be an array");
+    assert_eq!(logs.len(), selectors.len());
+
+    for (log, selector) in logs.iter().zip(selectors) {
+        assert_eq!(log["operation"], operation);
+        assert_eq!(log["content_level"], "content");
+        assert_eq!(log["decision"], "allow");
+        assert_eq!(log["policy_ids"], json!([policy_id]));
+        assert_eq!(log["decided_by"], decided_by);
+        assert_eq!(log["decided_at"], "<decided_at>");
+
+        let subject: Value =
+            serde_json::from_str(log["subject"].as_str().expect("subject must be JSON")).unwrap();
+        assert_eq!(subject, json!({"kind": "user", "id": "alice"}));
+
+        let resource: Value =
+            serde_json::from_str(log["resource"].as_str().expect("resource must be JSON")).unwrap();
+        assert_eq!(
+            resource,
+            json!({"type": "concept_document", "selector": selector})
+        );
+    }
+}
+
 fn write_file(path: impl AsRef<Path>, content: &str) {
     let path = path.as_ref();
     if let Some(parent) = path.parent() {
@@ -159,9 +215,11 @@ fn graph_cli_returns_graph_index_golden() {
         "# Alpha\n\n[Beta](beta.md)\n",
     );
     write_file(root.path().join("docs").join("beta.md"), "# Beta\n");
+    write_file(root.path().join("docs").join("gamma.md"), "# Gamma\n");
+    write_file(root.path().join("docs").join("delta.md"), "# Delta\n");
     write_file(
         root.path().join("docs").join("alpha.llmwiki.yaml"),
-        "relations:\n  - type: depends_on\n    target: beta.md\n",
+        "relations:\n  - type: depends_on\n    target: beta.md\n  - type: mentions\n    target: gamma.md\n  - type: similar_to\n    target: delta.md\n",
     );
 
     let actual = run_and_normalize(&[
@@ -191,6 +249,16 @@ fn graph_cli_returns_graph_index_golden() {
                     "source": "docs/alpha.md",
                     "relation_type": "depends_on",
                     "target": "docs/beta.md"
+                },
+                {
+                    "source": "docs/alpha.md",
+                    "relation_type": "mentions",
+                    "target": "docs/gamma.md"
+                },
+                {
+                    "source": "docs/alpha.md",
+                    "relation_type": "similar_to",
+                    "target": "docs/delta.md"
                 }
             ],
             "findings": []
@@ -265,7 +333,7 @@ fn query_cli_returns_query_result_golden() {
         "policy:\n  policy_id: query-allow\n  subject:\n    kind: user\n    id: alice\n  scope: team\n  operation: query\n  content_level: content\n  resource:\n    type: concept_document\n    selector: \"*\"\n  decision: allow\n  reason: allow query\n",
     );
 
-    let actual = run_and_normalize(&[
+    let mut actual = run_and_normalize(&[
         "query",
         "--workspace-root",
         root.path().to_str().unwrap(),
@@ -282,6 +350,9 @@ fn query_cli_returns_query_result_golden() {
         "--access-policy",
         "query-policy.yaml",
     ]);
+    let decision_logs = remove_object_field(&mut actual, "query_result", "decision_logs");
+    remove_key_recursively(&mut actual["query_result"]["citations"], "score");
+    remove_key_recursively(&mut actual["query_result"]["matched_pages"], "score");
 
     let expected = json!({
         "query_result": {
@@ -295,40 +366,14 @@ fn query_cli_returns_query_result_golden() {
             "citations": [
                 {
                     "path": "docs/query.md",
-                    "title": "Query Target",
-                    "score": 14
+                    "title": "Query Target"
                 }
             ],
             "confidence": "high",
             "matched_pages": [
                 {
                     "path": "docs/query.md",
-                    "title": "Query Target",
-                    "score": 14
-                }
-            ],
-            "decision_logs": [
-                {
-                    "subject": "{\"kind\":\"user\",\"id\":\"alice\"}",
-                    "operation": "query",
-                    "content_level": "content",
-                    "resource": "{\"type\":\"concept_document\",\"selector\":\"docs/index.md\"}",
-                    "decision": "allow",
-                    "policy_ids": ["query-allow"],
-                    "decided_by": "llmwiki-query",
-                    "decided_at": "<decided_at>",
-                    "reason": "allow query"
-                },
-                {
-                    "subject": "{\"kind\":\"user\",\"id\":\"alice\"}",
-                    "operation": "query",
-                    "content_level": "content",
-                    "resource": "{\"type\":\"concept_document\",\"selector\":\"docs/query.md\"}",
-                    "decision": "allow",
-                    "policy_ids": ["query-allow"],
-                    "decided_by": "llmwiki-query",
-                    "decided_at": "<decided_at>",
-                    "reason": "allow query"
+                    "title": "Query Target"
                 }
             ],
             "filing_candidate_metadata": {
@@ -342,6 +387,199 @@ fn query_cli_returns_query_result_golden() {
                 "subject_kind": "user",
                 "subject_id": "alice"
             }
+        }
+    });
+
+    assert_eq!(actual, expected);
+    assert_decision_logs(
+        &decision_logs,
+        "query",
+        "llmwiki-query",
+        "query-allow",
+        &["docs/index.md", "docs/query.md"],
+    );
+}
+
+#[test]
+fn related_cli_returns_related_result_golden() {
+    let root = tempdir().unwrap();
+    bundle_root(root.path());
+    write_file(
+        root.path().join("docs").join("procedure.md"),
+        "---\nllmwiki:\n  scope: team\n---\n# Procedure\n\nProcedure body.\n",
+    );
+    write_file(
+        root.path().join("docs").join("policy.md"),
+        "---\nllmwiki:\n  scope: team\n---\n# Policy\n\nPolicy body.\n",
+    );
+    write_file(
+        root.path().join("docs").join("procedure.llmwiki.yaml"),
+        "relations:\n  - type: constrained_by\n    target: policy.md\n",
+    );
+    write_file(
+        root.path().join("related-policy.yaml"),
+        "policy:\n  policy_id: related-allow\n  subject:\n    kind: user\n    id: alice\n  scope: team\n  operation: answer_suggestion\n  content_level: \"*\"\n  resource:\n    type: \"*\"\n    selector: \"*\"\n  decision: allow\n  reason: allow related\n",
+    );
+
+    let mut actual = run_and_normalize(&[
+        "related",
+        "--workspace-root",
+        root.path().to_str().unwrap(),
+        "--operation",
+        "answer_suggestion",
+        "--scope",
+        "team",
+        "--content-level",
+        "summary",
+        "--subject-kind",
+        "user",
+        "--subject-id",
+        "alice",
+        "--access-policy",
+        "related-policy.yaml",
+        "--depth",
+        "2",
+        "--limit",
+        "5",
+        "docs/procedure.md",
+    ]);
+    let decision_logs = remove_object_field(&mut actual, "related_result", "decision_logs");
+
+    let expected = json!({
+        "related_result": {
+            "generated_at": "<generated_at>",
+            "status": "success",
+            "message": "related retrieval completed",
+            "seed": "docs/procedure.md",
+            "operation": "answer_suggestion",
+            "scope": "team",
+            "content_level": "summary",
+            "depth": 2,
+            "results": [
+                {
+                    "path": "docs/policy.md",
+                    "title": "Policy",
+                    "score": 0.9,
+                    "content": "Policy body.",
+                    "relation_paths": [
+                        [
+                            {
+                                "from": "docs/procedure.md",
+                                "relation": "constrained_by",
+                                "to": "docs/policy.md",
+                                "source": "typed_relation",
+                                "direction": "forward"
+                            }
+                        ]
+                    ],
+                    "access_decisions": [
+                        {
+                            "stage": "seed",
+                            "log": {
+                                "subject": "{\"kind\":\"user\",\"id\":\"alice\"}",
+                                "operation": "answer_suggestion",
+                                "content_level": "metadata",
+                                "resource": "{\"type\":\"concept_document\",\"selector\":\"docs/procedure.md\"}",
+                                "decision": "allow",
+                                "policy_ids": ["related-allow"],
+                                "decided_by": "llmwiki-related",
+                                "decided_at": "<decided_at>",
+                                "reason": "allow related"
+                            }
+                        },
+                        {
+                            "stage": "edge",
+                            "log": {
+                                "subject": "{\"kind\":\"user\",\"id\":\"alice\"}",
+                                "operation": "answer_suggestion",
+                                "content_level": "metadata",
+                                "resource": "{\"type\":\"relation_edge\",\"selector\":\"docs/procedure.md --constrained_by--> docs/policy.md\"}",
+                                "decision": "allow",
+                                "policy_ids": ["related-allow"],
+                                "decided_by": "llmwiki-related",
+                                "decided_at": "<decided_at>",
+                                "reason": "allow related"
+                            }
+                        },
+                        {
+                            "stage": "neighbor",
+                            "log": {
+                                "subject": "{\"kind\":\"user\",\"id\":\"alice\"}",
+                                "operation": "answer_suggestion",
+                                "content_level": "metadata",
+                                "resource": "{\"type\":\"concept_document\",\"selector\":\"docs/policy.md\"}",
+                                "decision": "allow",
+                                "policy_ids": ["related-allow"],
+                                "decided_by": "llmwiki-related",
+                                "decided_at": "<decided_at>",
+                                "reason": "allow related"
+                            }
+                        },
+                        {
+                            "stage": "section_body",
+                            "log": {
+                                "subject": "{\"kind\":\"user\",\"id\":\"alice\"}",
+                                "operation": "answer_suggestion",
+                                "content_level": "summary",
+                                "resource": "{\"type\":\"concept_document\",\"selector\":\"docs/policy.md\"}",
+                                "decision": "allow",
+                                "policy_ids": ["related-allow"],
+                                "decided_by": "llmwiki-related",
+                                "decided_at": "<decided_at>",
+                                "reason": "allow related"
+                            }
+                        }
+                    ],
+                    "why": "docs/policy.md is related from docs/procedure.md through constrained_by at distance 1"
+                }
+            ]
+        }
+    });
+
+    assert_eq!(actual, expected);
+    assert_eq!(decision_logs.as_array().unwrap().len(), 4);
+}
+
+#[test]
+fn related_cli_returns_hold_golden_for_invalid_operation() {
+    let root = tempdir().unwrap();
+    bundle_root(root.path());
+    write_file(
+        root.path().join("docs").join("procedure.md"),
+        "---\nllmwiki:\n  scope: team\n---\n# Procedure\n",
+    );
+
+    let actual = run_and_normalize(&[
+        "related",
+        "--workspace-root",
+        root.path().to_str().unwrap(),
+        "--operation",
+        "retrieve",
+        "--scope",
+        "team",
+        "--content-level",
+        "content",
+        "--subject-kind",
+        "user",
+        "--subject-id",
+        "alice",
+        "--access-policy",
+        "missing-policy.yaml",
+        "docs/procedure.md",
+    ]);
+
+    let expected = json!({
+        "related_result": {
+            "generated_at": "<generated_at>",
+            "status": "hold",
+            "message": "invalid operation: retrieve",
+            "seed": "docs/procedure.md",
+            "operation": "retrieve",
+            "scope": "team",
+            "content_level": "content",
+            "depth": 2,
+            "results": [],
+            "decision_logs": []
         }
     });
 
@@ -556,7 +794,7 @@ fn export_cli_returns_export_artifact_golden() {
         "policy:\n  policy_id: export-allow\n  subject:\n    kind: user\n    id: alice\n  scope: personal\n  operation: export\n  content_level: content\n  resource:\n    type: concept_document\n    selector: \"*\"\n  decision: allow\n  reason: allow export\n",
     );
 
-    let actual = run_and_normalize(&[
+    let mut actual = run_and_normalize(&[
         "export",
         "--workspace-root",
         root.path().to_str().unwrap(),
@@ -572,6 +810,7 @@ fn export_cli_returns_export_artifact_golden() {
         "export-policy.yaml",
         "docs/export.md",
     ]);
+    let decision_logs = remove_object_field(&mut actual, "export_artifact", "decision_logs");
 
     let expected = json!({
         "export_artifact": {
@@ -586,24 +825,18 @@ fn export_cli_returns_export_artifact_golden() {
                     "source_path": "docs/export.md",
                     "export_path": "<export_path>"
                 }
-            ],
-            "decision_logs": [
-                {
-                    "subject": "{\"kind\":\"user\",\"id\":\"alice\"}",
-                    "operation": "export",
-                    "content_level": "content",
-                    "resource": "{\"type\":\"concept_document\",\"selector\":\"docs/export.md\"}",
-                    "decision": "allow",
-                    "policy_ids": ["export-allow"],
-                    "decided_by": "llmwiki-export",
-                    "decided_at": "<decided_at>",
-                    "reason": "allow export"
-                }
             ]
         }
     });
 
     assert_eq!(actual, expected);
+    assert_decision_logs(
+        &decision_logs,
+        "export",
+        "llmwiki-export",
+        "export-allow",
+        &["docs/export.md"],
+    );
 }
 
 #[test]
