@@ -244,6 +244,44 @@ pub struct InstalledSkill {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CodexSessionImportResultEnvelope {
+    pub codex_session_import_result: CodexSessionImportResult,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CodexSessionImportResult {
+    pub generated_at: String,
+    pub status: String,
+    pub message: String,
+    pub repo_root: String,
+    pub sessions_root: String,
+    pub output_dir: String,
+    pub artifact_path: String,
+    pub imported_sessions: usize,
+    pub skipped_sessions: usize,
+    pub candidates: Vec<CodexSessionCandidate>,
+    pub evidence_map: Vec<CodexSessionEvidence>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CodexSessionCandidate {
+    pub session_id: String,
+    pub session_timestamp: String,
+    pub source_path: String,
+    pub candidate_path: String,
+    pub citation: String,
+    pub confidence: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CodexSessionEvidence {
+    pub session_id: String,
+    pub source_ref: String,
+    pub candidate_path: String,
+    pub citation: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RedactionResultEnvelope {
     pub redaction_result: RedactionResult,
 }

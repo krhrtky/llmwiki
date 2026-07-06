@@ -1,8 +1,8 @@
 use clap::{error::ErrorKind, Parser, Subcommand, ValueEnum};
 use llmwiki::commands::{
-    run_export_command, run_file_command, run_graph_command, run_ingest_command, run_lint_command,
-    run_propose_command, run_query_command, run_redact_command, run_related_command,
-    run_skill_install_command,
+    run_codex_session_import_command, run_export_command, run_file_command, run_graph_command,
+    run_ingest_command, run_lint_command, run_propose_command, run_query_command,
+    run_redact_command, run_related_command, run_skill_install_command,
 };
 use std::path::PathBuf;
 
@@ -151,6 +151,10 @@ enum Command {
         #[command(subcommand)]
         command: SkillCommand,
     },
+    CodexSession {
+        #[command(subcommand)]
+        command: CodexSessionCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -160,6 +164,22 @@ enum SkillCommand {
         workspace_root: PathBuf,
         #[arg(long)]
         codex_home: Option<PathBuf>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum CodexSessionCommand {
+    Import {
+        #[arg(long, default_value = ".")]
+        workspace_root: PathBuf,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+        format: OutputFormat,
+        #[arg(long = "sessions-root")]
+        sessions_root: Option<PathBuf>,
+        #[arg(long = "repo-root")]
+        repo_root: Option<PathBuf>,
+        #[arg(long)]
+        limit: Option<usize>,
     },
 }
 
@@ -210,6 +230,15 @@ fn main() {
                 workspace_root,
                 codex_home,
             } => run_skill_install_command(&workspace_root, codex_home),
+        },
+        Command::CodexSession { command } => match command {
+            CodexSessionCommand::Import {
+                workspace_root,
+                sessions_root,
+                repo_root,
+                limit,
+                ..
+            } => run_codex_session_import_command(&workspace_root, sessions_root, repo_root, limit),
         },
         Command::Ingest {
             workspace_root,

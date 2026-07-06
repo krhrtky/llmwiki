@@ -623,6 +623,89 @@ fn skill_install_cli_rejects_relative_codex_home_golden() {
 }
 
 #[test]
+fn codex_session_import_cli_returns_import_result_golden() {
+    let root = tempdir().unwrap();
+    bundle_root(root.path());
+    let root_canonical = fs::canonicalize(root.path()).unwrap();
+    let sessions = tempdir().unwrap();
+    write_file(
+        sessions
+            .path()
+            .join("2026")
+            .join("07")
+            .join("06")
+            .join("session.jsonl"),
+        &format!(
+            "{{\"type\":\"session_meta\",\"payload\":{{\"session_id\":\"abc123\",\"timestamp\":\"2026-07-06T00:00:00Z\",\"cwd\":\"{}\"}}}}\n{{\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"user\",\"content\":[{{\"type\":\"input_text\",\"text\":\"Read docs/index.md with token=super-secret-value\"}}]}}}}\n{{\"type\":\"response_item\",\"payload\":{{\"type\":\"function_call\",\"name\":\"exec_command\",\"arguments\":\"{{\\\"cmd\\\":\\\"sed -n docs/index.md\\\"}}\"}}}}\n",
+            root_canonical.display()
+        ),
+    );
+    write_file(
+        sessions
+            .path()
+            .join("2026")
+            .join("07")
+            .join("06")
+            .join("other.jsonl"),
+        "{\"type\":\"session_meta\",\"payload\":{\"session_id\":\"skip\",\"timestamp\":\"2026-07-06T00:00:00Z\",\"cwd\":\"/tmp/other\"}}\n",
+    );
+
+    let mut actual = run_cli(&[
+        "codex-session",
+        "import",
+        "--workspace-root",
+        root.path().to_str().unwrap(),
+        "--sessions-root",
+        sessions.path().to_str().unwrap(),
+        "--repo-root",
+        root.path().to_str().unwrap(),
+    ]);
+    let candidate_path = actual["codex_session_import_result"]["candidates"][0]["candidate_path"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let candidate = fs::read_to_string(root.path().join(candidate_path)).unwrap();
+    assert!(candidate.contains("[redacted credential]"));
+    assert!(!candidate.contains("super-secret-value"));
+
+    normalize_value(&mut actual);
+    remove_key_recursively(&mut actual, "source_path");
+    remove_key_recursively(&mut actual, "repo_root");
+    remove_key_recursively(&mut actual, "sessions_root");
+
+    let expected = json!({
+        "codex_session_import_result": {
+            "generated_at": "<generated_at>",
+            "status": "success",
+            "message": "codex sessions imported as personal wiki candidates",
+            "output_dir": "docs/personal/codex-sessions",
+            "artifact_path": "<artifact_path>",
+            "imported_sessions": 1,
+            "skipped_sessions": 1,
+            "candidates": [
+                {
+                    "session_id": "abc123",
+                    "session_timestamp": "2026-07-06T00:00:00Z",
+                    "candidate_path": "<candidate_path>",
+                    "citation": "[codex-session:abc123](https://codex.local/session/abc123)",
+                    "confidence": "medium"
+                }
+            ],
+            "evidence_map": [
+                {
+                    "session_id": "abc123",
+                    "source_ref": "codex-session:abc123",
+                    "candidate_path": "<candidate_path>",
+                    "citation": "[codex-session:abc123](https://codex.local/session/abc123)"
+                }
+            ]
+        }
+    });
+
+    assert_eq!(actual, expected);
+}
+
+#[test]
 fn related_cli_returns_related_result_golden() {
     let root = tempdir().unwrap();
     bundle_root(root.path());

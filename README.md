@@ -73,6 +73,16 @@ llmwiki lint --workspace-root .
 - `graph` と `lint` は `paths` を省略すると workspace 全体を走査します。
 - `export` は `--scope` か page 側の scope 情報と `--access-policy` を使って出力を制御します。
 
+### Demo Helper
+
+Codex のローカル session 履歴を LLMWiki demo 用の personal candidate に変換する場合は次を使います。raw session log は repository にコピーせず、要約 Markdown と `.llmwiki/` 配下の manifest だけを生成します。
+
+```bash
+llmwiki codex-session import --workspace-root . --sessions-root ~/.codex/sessions --repo-root . --limit 1
+```
+
+生成された `docs/personal/codex-sessions/*.md` は通常の wiki page と同じく `redact` と `propose` に渡せます。
+
 ### Distribution Helper
 
 ```bash

@@ -1,3 +1,4 @@
+use crate::codex_session::{import_codex_sessions, CodexSessionError};
 use crate::export::{export_workspace, ExportError, ExportOutcome};
 use crate::file::{file_candidate, FileCommandInput};
 use crate::graph::build_graph_index;
@@ -7,11 +8,11 @@ use crate::propose::{propose_workspace, ProposeError};
 use crate::query::{query_workspace, QueryError};
 use crate::redact::{redact_workspace, RedactError};
 use crate::related::{related_workspace, RelatedError, RelatedInput};
-use crate::report::SkillInstallResultEnvelope;
 use crate::report::{
-    CommandStatus, CommandStatusEnvelope, ExportArtifactEnvelope, Finding, GraphIndexEnvelope,
-    IngestResultEnvelope, LintReport, LintReportEnvelope, ProposalDraftEnvelope,
-    QueryResultEnvelope, RelatedResultEnvelope, Severity,
+    CodexSessionImportResultEnvelope, CommandStatus, CommandStatusEnvelope, ExportArtifactEnvelope,
+    Finding, GraphIndexEnvelope, IngestResultEnvelope, LintReport, LintReportEnvelope,
+    ProposalDraftEnvelope, QueryResultEnvelope, RelatedResultEnvelope, Severity,
+    SkillInstallResultEnvelope,
 };
 use crate::skill::install_llmwiki_skill;
 use chrono::Utc;
@@ -224,6 +225,21 @@ pub fn run_skill_install_command(
     })
 }
 
+pub fn run_codex_session_import_command(
+    workspace_root: &Path,
+    sessions_root: Option<PathBuf>,
+    repo_root: Option<PathBuf>,
+    limit: Option<usize>,
+) -> Result<serde_json::Value, LintError> {
+    let value = match import_codex_sessions(workspace_root, sessions_root, repo_root, limit) {
+        Ok(result) => to_value(CodexSessionImportResultEnvelope {
+            codex_session_import_result: result,
+        })?,
+        Err(error) => codex_session_error_value(error),
+    };
+    Ok(value)
+}
+
 pub fn run_redact_command(
     workspace_root: &Path,
     target_scope: Option<String>,
@@ -382,6 +398,16 @@ fn related_error_value(error: RelatedError) -> serde_json::Value {
             "depth": 0,
             "results": [],
             "decision_logs": []
+        }
+    })
+}
+
+fn codex_session_error_value(error: CodexSessionError) -> serde_json::Value {
+    serde_json::json!({
+        "command_result": {
+            "command": "codex-session import",
+            "status": "error",
+            "message": error.to_string()
         }
     })
 }

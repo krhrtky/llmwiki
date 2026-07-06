@@ -1,0 +1,187 @@
+owner: codex-user
+reviewer: team_owner
+source:
+  kind: codex_session
+  session_id: 019f3490-b31b-7603-903f-ca9e0bf55dda
+  raw_source_ref: codex-session:019f3490-b31b-7603-903f-ca9e0bf55dda
+relations:
+  - type: mentions
+    target: ../../../AGENTS.md
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: mentions
+    target: ../../../Cargo.toml
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: mentions
+    target: ../../../README.md
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: mentions
+    target: ../../../docs/adr/index.md
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: mentions
+    target: ../../../docs/glossary.md
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: mentions
+    target: ../../../docs/index.md
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: mentions
+    target: ../../../docs/open-questions.md
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: mentions
+    target: ../../../docs/personal/codex-sessions
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: mentions
+    target: ../../../docs/personal/codex-sessions/019f3490-b31b-7603-903f-ca9e0bf55dda.llmwiki.yaml
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: mentions
+    target: ../../../docs/personal/codex-sessions/019f3490-b31b-7603-903f-ca9e0bf55dda.md
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: mentions
+    target: ../../../docs/requirements/index.md
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: mentions
+    target: ../../../docs/specs
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: mentions
+    target: ../../../docs/specs/cli-api.md
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: mentions
+    target: ../../../docs/specs/format-profile.md
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: mentions
+    target: ../../../docs/specs/maintenance.md
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: mentions
+    target: ../../../docs/specs/retrieval.md
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: mentions
+    target: ../../../docs/specs/workflow-and-access.md
+    target_kind: doc
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: distributed_as
+    target: ../../../skills/llmwiki/SKILL.md
+    target_kind: skill
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: implemented_by
+    target: ../../../src/codex_session.rs
+    target_kind: code
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: implemented_by
+    target: ../../../src/commands.rs
+    target_kind: code
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: implemented_by
+    target: ../../../src/file.rs
+    target_kind: code
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: implemented_by
+    target: ../../../src/ingest.rs
+    target_kind: code
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: implemented_by
+    target: ../../../src/lib.rs
+    target_kind: code
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: implemented_by
+    target: ../../../src/main.rs
+    target_kind: code
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: implemented_by
+    target: ../../../src/propose.rs
+    target_kind: code
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: implemented_by
+    target: ../../../src/query.rs
+    target_kind: code
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: implemented_by
+    target: ../../../src/redact.rs
+    target_kind: code
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: implemented_by
+    target: ../../../src/report.rs
+    target_kind: code
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: implemented_by
+    target: ../../../src/skill.rs
+    target_kind: code
+    provenance: parser
+    confidence: medium
+    status: proposed
+  - type: verified_by
+    target: ../../../tests/cli_golden.rs
+    target_kind: test
+    provenance: parser
+    confidence: medium
+    status: proposed
