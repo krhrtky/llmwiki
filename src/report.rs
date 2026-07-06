@@ -233,6 +233,14 @@ pub struct SkillInstallResult {
     pub source_path: String,
     pub install_path: String,
     pub message: String,
+    pub installed_skills: Vec<InstalledSkill>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstalledSkill {
+    pub name: String,
+    pub source_path: String,
+    pub install_path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

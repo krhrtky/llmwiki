@@ -523,6 +523,13 @@ fn skill_install_cli_returns_skill_install_result_golden() {
         root.path().join("skills").join("llmwiki").join("SKILL.md"),
         "---\nname: llmwiki\ndescription: LLMWiki entry point skill\n---\n# LLMWiki\n",
     );
+    write_file(
+        root.path()
+            .join("skills")
+            .join("llmwiki-answer-query")
+            .join("SKILL.md"),
+        "---\nname: llmwiki-answer-query\ndescription: Answer from LLMWiki\n---\n# Answer\n",
+    );
     let codex_home = tempdir().unwrap();
 
     let actual = run_and_normalize(&[
@@ -538,10 +545,22 @@ fn skill_install_cli_returns_skill_install_result_golden() {
         "skill_install_result": {
             "generated_at": "<generated_at>",
             "status": "success",
-            "skill": "llmwiki",
-            "source_path": "skills/llmwiki/SKILL.md",
+            "skill": "llmwiki-suite",
+            "source_path": "skills",
             "install_path": "<install_path>",
-            "message": "skill installed"
+            "message": "2 skill(s) installed",
+            "installed_skills": [
+                {
+                    "name": "llmwiki",
+                    "source_path": "skills/llmwiki/SKILL.md",
+                    "install_path": "<install_path>"
+                },
+                {
+                    "name": "llmwiki-answer-query",
+                    "source_path": "skills/llmwiki-answer-query/SKILL.md",
+                    "install_path": "<install_path>"
+                }
+            ]
         }
     });
 
@@ -556,6 +575,17 @@ fn skill_install_cli_returns_skill_install_result_golden() {
         )
         .unwrap(),
         "---\nname: llmwiki\ndescription: LLMWiki entry point skill\n---\n# LLMWiki\n"
+    );
+    assert_eq!(
+        fs::read_to_string(
+            codex_home
+                .path()
+                .join("skills")
+                .join("llmwiki-answer-query")
+                .join("SKILL.md")
+        )
+        .unwrap(),
+        "---\nname: llmwiki-answer-query\ndescription: Answer from LLMWiki\n---\n# Answer\n"
     );
 }
 
@@ -581,10 +611,11 @@ fn skill_install_cli_rejects_relative_codex_home_golden() {
         "skill_install_result": {
             "generated_at": "<generated_at>",
             "status": "error",
-            "skill": "llmwiki",
-            "source_path": "skills/llmwiki/SKILL.md",
+            "skill": "llmwiki-suite",
+            "source_path": "skills",
             "install_path": "<install_path>",
-            "message": "codex home must be a non-empty absolute path"
+            "message": "codex home must be a non-empty absolute path",
+            "installed_skills": []
         }
     });
 

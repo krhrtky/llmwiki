@@ -2,6 +2,24 @@ relations:
   - type: distributed_as
     target: ../../skills/llmwiki/SKILL.md
     target_kind: skill
+  - type: distributed_as
+    target: ../../skills/llmwiki-answer-query/SKILL.md
+    target_kind: skill
+  - type: distributed_as
+    target: ../../skills/llmwiki-ingest-source/SKILL.md
+    target_kind: skill
+  - type: distributed_as
+    target: ../../skills/llmwiki-file-knowledge/SKILL.md
+    target_kind: skill
+  - type: distributed_as
+    target: ../../skills/llmwiki-promote-knowledge/SKILL.md
+    target_kind: skill
+  - type: distributed_as
+    target: ../../skills/llmwiki-maintain/SKILL.md
+    target_kind: skill
+  - type: distributed_as
+    target: ../../skills/llmwiki-export/SKILL.md
+    target_kind: skill
   - type: implemented_by
     target: llmwiki skill install
     target_kind: command

@@ -1,155 +1,240 @@
-use crate::report::SkillInstallResult;
+use crate::report::{InstalledSkill, SkillInstallResult};
 use chrono::Utc;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-const SKILL_RELATIVE_PATH: &str = "skills/llmwiki/SKILL.md";
+const SKILLS_RELATIVE_PATH: &str = "skills";
 
 pub fn install_llmwiki_skill(
     workspace_root: &Path,
     codex_home: Option<PathBuf>,
 ) -> SkillInstallResult {
     let generated_at = Utc::now().to_rfc3339();
-    let source_path = workspace_root.join(SKILL_RELATIVE_PATH);
-    let source_path_string = SKILL_RELATIVE_PATH.to_string();
+    let source_root = workspace_root.join(SKILLS_RELATIVE_PATH);
+    let source_path_string = SKILLS_RELATIVE_PATH.to_string();
 
     let Some(install_root) = codex_home.or_else(default_codex_home) else {
-        return SkillInstallResult {
+        return install_error(
             generated_at,
-            status: "error".to_string(),
-            skill: "llmwiki".to_string(),
-            source_path: source_path_string,
-            install_path: String::new(),
-            message: "codex home is not set".to_string(),
-        };
+            source_path_string,
+            String::new(),
+            "codex home is not set",
+        );
     };
 
     let Some(install_root) = valid_absolute_path(install_root) else {
-        return SkillInstallResult {
+        return install_error(
             generated_at,
-            status: "error".to_string(),
-            skill: "llmwiki".to_string(),
-            source_path: source_path_string,
-            install_path: String::new(),
-            message: "codex home must be a non-empty absolute path".to_string(),
-        };
+            source_path_string,
+            String::new(),
+            "codex home must be a non-empty absolute path",
+        );
     };
 
-    if !source_path.is_file() {
-        return SkillInstallResult {
-            generated_at,
-            status: "error".to_string(),
-            skill: "llmwiki".to_string(),
-            source_path: source_path_string,
-            install_path: install_root.join(SKILL_RELATIVE_PATH).display().to_string(),
-            message: format!("skill source does not exist: {}", source_path.display()),
-        };
-    }
+    let skill_sources = match list_skill_sources(workspace_root) {
+        Ok(sources) if !sources.is_empty() => sources,
+        Ok(_) => {
+            return install_error(
+                generated_at,
+                source_path_string,
+                install_root
+                    .join(SKILLS_RELATIVE_PATH)
+                    .display()
+                    .to_string(),
+                format!("skill source does not exist: {}", source_root.display()),
+            );
+        }
+        Err(message) => {
+            return install_error(
+                generated_at,
+                source_path_string,
+                install_root
+                    .join(SKILLS_RELATIVE_PATH)
+                    .display()
+                    .to_string(),
+                message,
+            );
+        }
+    };
 
     if is_existing_symlink(&install_root) {
-        return SkillInstallResult {
+        return install_error(
             generated_at,
-            status: "error".to_string(),
-            skill: "llmwiki".to_string(),
-            source_path: source_path_string,
-            install_path: install_root.display().to_string(),
-            message: format!(
+            source_path_string,
+            install_root.display().to_string(),
+            format!(
                 "codex home must not be a symlink: {}",
                 install_root.display()
             ),
-        };
+        );
     }
 
     if let Err(error) = fs::create_dir_all(&install_root) {
-        return SkillInstallResult {
+        return install_error(
             generated_at,
-            status: "error".to_string(),
-            skill: "llmwiki".to_string(),
-            source_path: source_path_string,
-            install_path: install_root.display().to_string(),
-            message: format!(
+            source_path_string,
+            install_root.display().to_string(),
+            format!(
                 "cannot create skill install directory {}: {error}",
                 install_root.display()
             ),
-        };
+        );
     }
 
     let install_root = match fs::canonicalize(&install_root) {
         Ok(path) => path,
         Err(error) => {
-            return SkillInstallResult {
+            return install_error(
                 generated_at,
-                status: "error".to_string(),
-                skill: "llmwiki".to_string(),
-                source_path: source_path_string,
-                install_path: install_root.display().to_string(),
-                message: format!("cannot read codex home {}: {error}", install_root.display()),
-            };
+                source_path_string,
+                install_root.display().to_string(),
+                format!("cannot read codex home {}: {error}", install_root.display()),
+            );
         }
     };
-    let install_path = install_root.join(SKILL_RELATIVE_PATH);
+    let install_path = install_root.join(SKILLS_RELATIVE_PATH);
     let install_path_string = install_path.display().to_string();
 
     if let Err(message) = reject_existing_symlink_path(&install_path) {
-        return SkillInstallResult {
+        return install_error(
             generated_at,
-            status: "error".to_string(),
-            skill: "llmwiki".to_string(),
-            source_path: source_path_string,
-            install_path: install_path_string,
+            source_path_string,
+            install_path_string,
             message,
-        };
+        );
     }
 
-    if let Some(parent) = install_path.parent() {
-        if let Err(error) = fs::create_dir_all(parent) {
-            return SkillInstallResult {
+    let mut installed_skills = Vec::new();
+    for skill_source in skill_sources {
+        let skill_install_path = install_root
+            .join(SKILLS_RELATIVE_PATH)
+            .join(&skill_source.name)
+            .join("SKILL.md");
+        let skill_install_path_string = skill_install_path.display().to_string();
+
+        if let Err(message) = reject_existing_symlink_path(&skill_install_path) {
+            return install_error(
                 generated_at,
-                status: "error".to_string(),
-                skill: "llmwiki".to_string(),
-                source_path: source_path_string,
-                install_path: install_path_string,
-                message: format!(
-                    "cannot create skill install directory {}: {error}",
-                    parent.display()
-                ),
-            };
+                skill_source.relative_path,
+                skill_install_path_string,
+                message,
+            );
         }
+
+        if let Some(parent) = skill_install_path.parent() {
+            if let Err(error) = fs::create_dir_all(parent) {
+                return install_error(
+                    generated_at,
+                    skill_source.relative_path,
+                    skill_install_path_string,
+                    format!(
+                        "cannot create skill install directory {}: {error}",
+                        parent.display()
+                    ),
+                );
+            }
+        }
+
+        if let Err(message) = reject_existing_symlink_path(&skill_install_path) {
+            return install_error(
+                generated_at,
+                skill_source.relative_path,
+                skill_install_path_string,
+                message,
+            );
+        }
+
+        if let Err(error) = fs::copy(&skill_source.path, &skill_install_path) {
+            return install_error(
+                generated_at,
+                skill_source.relative_path,
+                skill_install_path_string,
+                format!(
+                    "cannot install skill {} -> {}: {error}",
+                    skill_source.path.display(),
+                    skill_install_path.display()
+                ),
+            );
+        }
+
+        installed_skills.push(InstalledSkill {
+            name: skill_source.name,
+            source_path: skill_source.relative_path,
+            install_path: skill_install_path_string,
+        });
     }
 
-    if let Err(message) = reject_existing_symlink_path(&install_path) {
-        return SkillInstallResult {
-            generated_at,
-            status: "error".to_string(),
-            skill: "llmwiki".to_string(),
-            source_path: source_path_string,
-            install_path: install_path_string,
-            message,
-        };
-    }
-
-    if let Err(error) = fs::copy(&source_path, &install_path) {
-        return SkillInstallResult {
-            generated_at,
-            status: "error".to_string(),
-            skill: "llmwiki".to_string(),
-            source_path: source_path_string,
-            install_path: install_path_string,
-            message: format!(
-                "cannot install skill {} -> {}: {error}",
-                source_path.display(),
-                install_path.display()
-            ),
-        };
-    }
-
+    let installed_count = installed_skills.len();
     SkillInstallResult {
         generated_at,
         status: "success".to_string(),
-        skill: "llmwiki".to_string(),
+        skill: "llmwiki-suite".to_string(),
         source_path: source_path_string,
         install_path: install_path_string,
-        message: "skill installed".to_string(),
+        message: format!("{installed_count} skill(s) installed"),
+        installed_skills,
+    }
+}
+
+struct SkillSource {
+    name: String,
+    path: PathBuf,
+    relative_path: String,
+}
+
+fn list_skill_sources(workspace_root: &Path) -> Result<Vec<SkillSource>, String> {
+    let skills_root = workspace_root.join(SKILLS_RELATIVE_PATH);
+    let entries = fs::read_dir(&skills_root).map_err(|error| {
+        format!(
+            "cannot read skill source directory {}: {error}",
+            skills_root.display()
+        )
+    })?;
+    let mut sources = Vec::new();
+
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            format!(
+                "cannot read skill source directory {}: {error}",
+                skills_root.display()
+            )
+        })?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        let skill_path = path.join("SKILL.md");
+        if !skill_path.is_file() {
+            continue;
+        }
+        sources.push(SkillSource {
+            name: name.to_string(),
+            path: skill_path,
+            relative_path: format!("{SKILLS_RELATIVE_PATH}/{name}/SKILL.md"),
+        });
+    }
+
+    sources.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(sources)
+}
+
+fn install_error(
+    generated_at: String,
+    source_path: impl Into<String>,
+    install_path: impl Into<String>,
+    message: impl Into<String>,
+) -> SkillInstallResult {
+    SkillInstallResult {
+        generated_at,
+        status: "error".to_string(),
+        skill: "llmwiki-suite".to_string(),
+        source_path: source_path.into(),
+        install_path: install_path.into(),
+        message: message.into(),
+        installed_skills: Vec::new(),
     }
 }
 
@@ -229,7 +314,10 @@ mod tests {
     use tempfile::tempdir;
 
     fn write_skill(root: &Path) {
-        let skill_path = root.join(SKILL_RELATIVE_PATH);
+        let skill_path = root
+            .join(SKILLS_RELATIVE_PATH)
+            .join("llmwiki")
+            .join("SKILL.md");
         fs::create_dir_all(skill_path.parent().unwrap()).unwrap();
         fs::write(
             skill_path,

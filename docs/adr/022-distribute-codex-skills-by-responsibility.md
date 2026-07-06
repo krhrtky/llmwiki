@@ -17,9 +17,9 @@ LLMWiki は repository-local docs と CLI を SoT とするが、Agent が毎回
 
 ## Decision
 
-この repository は `skills/llmwiki/SKILL.md` を配布可能な Codex Skill として持つ。配布導線は `llmwiki skill install --workspace-root . [--codex-home <path>]` とし、`$CODEX_HOME/skills/llmwiki` または `~/.codex/skills/llmwiki` に skill を配置する。
+この repository は `skills/*/SKILL.md` を配布可能な Codex Skill suite として持つ。配布導線は `llmwiki skill install --workspace-root . [--codex-home <path>]` とし、`$CODEX_HOME/skills/<skill-name>` または `~/.codex/skills/<skill-name>` に各 skill を配置する。
 
-docs 側は skill contract の正本であり、skill 実体は Agent が最初に読む入口と停止条件を提供する。詳細な要求、ADR、仕様は skill に複製せず、`docs/` へ progressive disclosure で辿らせる。
+docs 側は skill contract の正本であり、skill 実体は Agent が最初に読む入口、用途別の CLI 導出手順、停止条件を提供する。詳細な要求、ADR、仕様は skill に複製せず、`docs/` へ progressive disclosure で辿らせる。
 
 ## Alternatives
 

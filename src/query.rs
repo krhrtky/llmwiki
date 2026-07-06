@@ -336,8 +336,9 @@ fn collect_query_pages(root: &Path, bundle_root: &Path) -> Result<QueryPageSelec
                 canonical.display()
             ),
         })?;
-        let scope = extract_page_scope(&document, &canonical)?;
         let relative_path = relative_path(root, &canonical);
+        let scope = extract_page_scope(&document, &canonical)?
+            .or_else(|| default_query_scope_for_existing_docs(&relative_path));
         pages.push(QueryPage {
             path: canonical,
             relative_path,
@@ -359,6 +360,14 @@ fn collect_query_pages(root: &Path, bundle_root: &Path) -> Result<QueryPageSelec
     }
 
     Ok(QueryPageSelection::Pages(pages))
+}
+
+fn default_query_scope_for_existing_docs(relative_path: &str) -> Option<String> {
+    if relative_path.starts_with("docs/") {
+        Some("team".to_string())
+    } else {
+        None
+    }
 }
 
 fn extract_page_scope(
@@ -905,6 +914,61 @@ policy:
             serde_json::json!(["query-allow"])
         );
         assert!(!dir.path().join(".llmwiki").exists());
+    }
+
+    #[test]
+    fn docs_bundle_pages_without_scope_default_to_team_for_query() {
+        let dir = tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("docs")).unwrap();
+        write_file(
+            dir.path().join("docs").join("index.md"),
+            "# Index\n\nSkill installer behavior is documented here.\n",
+        );
+        write_file(
+            dir.path().join("docs").join("skill.md"),
+            "# Skill Installer\n\nskills/*/SKILL.md can be installed by llmwiki skill install.\n",
+        );
+        write_policy_yaml(
+            dir.path().join("policy.yaml"),
+            r#"
+policy:
+  policy_id: query-allow
+  subject:
+    kind: user
+    id: alice
+  scope: team
+  operation: query
+  content_level: content
+  resource:
+    type: concept_document
+    selector: "*"
+  decision: allow
+  reason: allow query
+"#,
+        );
+
+        let value = run_query_command(
+            dir.path(),
+            Some("skill installer".to_string()),
+            Some("team".to_string()),
+            Some("content".to_string()),
+            Some("user".to_string()),
+            Some("alice".to_string()),
+            vec![PathBuf::from("policy.yaml")],
+        )
+        .unwrap();
+
+        let result = &value["query_result"];
+        assert_eq!(result["status"], "success");
+        assert_ne!(
+            result["message"], "page scope is required for query",
+            "docs bundle pages without frontmatter should use the team default"
+        );
+        assert!(result["citations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|citation| citation["path"] == "docs/skill.md"));
     }
 
     #[test]
