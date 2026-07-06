@@ -80,7 +80,7 @@ struct PrivateStoreConfig {
 struct TeamStoreConfig {
     team_id: String,
     path: PathBuf,
-    repository: String,
+    repository: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -188,7 +188,7 @@ fn resolve_selector(
         store_id: format!("team:{team_id}"),
         visibility_store_kind: VisibilityStoreKind::Team,
         team_id: Some(team.team_id.clone()),
-        repository_identity: Some(team.repository.clone()),
+        repository_identity: team.repository.clone(),
         canonical_root: canonical_store_root(config_dir, &team.path)?,
     })
 }
@@ -218,7 +218,9 @@ fn validate_storage_config(config: &RootConfig, config_dir: &Path) -> Result<(),
             });
         }
         insert_unique(&mut team_ids, &team.team_id, "team_id")?;
-        insert_unique(&mut repositories, &team.repository, "repository")?;
+        if let Some(repository) = &team.repository {
+            insert_unique(&mut repositories, repository, "repository")?;
+        }
         insert_unique(
             &mut roots,
             &canonical_store_root(config_dir, &team.path)?
@@ -329,6 +331,83 @@ storage:
         .unwrap();
 
         let error = resolve_store(&dir.path().join("llmwiki.yaml"), "team:a").unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "duplicate repository: git@example.com:shared.git"
+        );
+    }
+
+    #[test]
+    fn resolves_local_team_store_without_repository() {
+        let dir = tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("stores").join("teams").join("platform")).unwrap();
+        fs::write(
+            dir.path().join("llmwiki.yaml"),
+            r#"
+storage:
+  teams:
+    - team_id: platform
+      path: ./stores/teams/platform
+"#,
+        )
+        .unwrap();
+
+        let store = resolve_store(&dir.path().join("llmwiki.yaml"), "team:platform").unwrap();
+
+        assert_eq!(store.store_id, "team:platform");
+        assert_eq!(store.team_id, Some("platform".to_string()));
+        assert_eq!(store.repository_identity, None);
+    }
+
+    #[test]
+    fn rejects_duplicate_team_root_even_without_repository() {
+        let dir = tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("shared")).unwrap();
+        fs::write(
+            dir.path().join("llmwiki.yaml"),
+            r#"
+storage:
+  teams:
+    - team_id: a
+      path: ./shared
+    - team_id: b
+      path: ./shared
+"#,
+        )
+        .unwrap();
+
+        let error = resolve_store(&dir.path().join("llmwiki.yaml"), "team:a").unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .starts_with("duplicate canonical_root: "),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn rejects_team_repository_reused_by_org() {
+        let dir = tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("team")).unwrap();
+        fs::create_dir_all(dir.path().join("org")).unwrap();
+        fs::write(
+            dir.path().join("llmwiki.yaml"),
+            r#"
+storage:
+  teams:
+    - team_id: platform
+      repository: git@example.com:shared.git
+      path: ./team
+  org:
+    repository: git@example.com:shared.git
+    path: ./org
+"#,
+        )
+        .unwrap();
+
+        let error = resolve_store(&dir.path().join("llmwiki.yaml"), "team:platform").unwrap_err();
 
         assert_eq!(
             error.to_string(),

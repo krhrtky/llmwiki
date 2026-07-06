@@ -33,10 +33,10 @@ LLMWiki は source、wiki、metadata、graph、workflow state を扱う。これ
 ## Visibility Store Registry
 
 - `private`: 0 or 1 store。local path または repository を許可する。
-- `team`: 0 件以上。各 entry は `team_id`、`repository`、`path` を持つ。
+- `team`: 0 件以上。各 entry は `team_id`、`path` を持ち、必要な場合のみ `repository` を持つ。
 - `org`: 0 or 1 store。設定する場合は `repository`、`path` を持つ。
 
-`team_id`、repository identity、canonical root は registry 内で重複してはならない。`org` 未設定時、`team -> org` の propose は実行不可とする。
+`team_id` と canonical root は registry 内で重複してはならない。repository identity は指定された store 同士でのみ重複してはならない。`org` 未設定時、`team -> org` の propose は実行不可とする。
 
 ## Acceptance Criteria
 

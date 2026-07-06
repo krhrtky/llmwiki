@@ -26,12 +26,12 @@ LLMWiki uses a root `llmwiki.yaml` storage registry to define visibility storage
 Storage visibility kinds are:
 
 - `private`: at most one store. It may be local or repository-backed.
-- `team`: multiple stores are allowed. Each store has a unique `team_id` and one repository.
+- `team`: multiple stores are allowed. Each store has a unique `team_id`, a canonical root, and an optional repository.
 - `org`: optional while org publishing remains under evaluation. If configured, at most one repository is allowed.
 
 `private` is not a page-level scope. It is a storage visibility boundary. Existing `personal` page metadata is treated as migration input for the `private` store.
 
-Repository identity and canonical root must be unique across configured stores. A `team` repository must not be reused by another `team` or by `org`.
+Canonical root must be unique across configured stores. Repository identity must also be unique when configured. A `team` repository must not be reused by another `team` or by `org`.
 
 ## Alternatives
 

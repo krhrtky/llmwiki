@@ -134,14 +134,15 @@ storage:
     repository: null
   teams:
     - team_id: platform
-      repository: git@example.com:platform.git
       path: ./stores/teams/platform
+      repository: git@example.com:platform.git # optional
   org:
     repository: git@example.com:org.git
     path: ./stores/org
 ```
 
 `org` は任意である。未設定時、`--store org` と `team:<team_id> -> org` propose は error または hold とする。
+`team.repository` は任意であり、省略時は `path` が local store root の正本になる。`propose` draft の `from_repository` / `to_repository` は repository-backed store に対してのみ出力する。
 
 ## Agent Skill 接続
 

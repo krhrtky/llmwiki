@@ -1314,6 +1314,120 @@ fn store_propose_private_to_team_records_store_semantics() {
 }
 
 #[test]
+fn store_propose_private_to_local_team_omits_repository_fields() {
+    let root = tempdir().unwrap();
+    let private = root.path().join("private");
+    let platform = root.path().join("stores").join("teams").join("platform");
+    write_file(private.join("index.md"), "# Index\n");
+    write_file(
+        private.join("promote.md"),
+        "# Promote\n\nThis page is ready for team review.\n",
+    );
+    write_file(platform.join("index.md"), "# Index\n");
+    write_file(
+        root.path().join("llmwiki.yaml"),
+        "storage:\n  private:\n    path: ./private\n  teams:\n    - team_id: platform\n      path: ./stores/teams/platform\n",
+    );
+
+    let redact = run_cli(&[
+        "redact",
+        "--config",
+        root.path().join("llmwiki.yaml").to_str().unwrap(),
+        "--store",
+        "private",
+        "--target-scope",
+        "team",
+        "promote.md",
+    ]);
+    let report_path = redact["redaction_result"]["report_path"]
+        .as_str()
+        .expect("report_path must be present")
+        .to_string();
+
+    let proposal = run_cli(&[
+        "propose",
+        "--config",
+        root.path().join("llmwiki.yaml").to_str().unwrap(),
+        "--from-store",
+        "private",
+        "--to-store",
+        "team:platform",
+        "--reviewer",
+        "riley",
+        "--approver",
+        "ada",
+        "--redaction-report",
+        &report_path,
+        "promote.md",
+    ]);
+
+    let draft = &proposal["proposal_draft"];
+    assert_eq!(draft["from_store"], "private");
+    assert_eq!(draft["to_store"], "team:platform");
+    assert!(draft["from_repository"].is_null());
+    assert!(draft["to_repository"].is_null());
+}
+
+#[test]
+fn store_propose_local_team_to_org_records_optional_from_repository() {
+    let root = tempdir().unwrap();
+    let platform = root.path().join("stores").join("teams").join("platform");
+    let org = root.path().join("stores").join("org");
+    write_file(platform.join("index.md"), "# Index\n");
+    write_file(
+        platform.join("promote.md"),
+        "# Promote\n\nThis page is ready for org review.\n",
+    );
+    write_file(org.join("index.md"), "# Index\n");
+    write_file(
+        root.path().join("llmwiki.yaml"),
+        "storage:\n  teams:\n    - team_id: platform\n      path: ./stores/teams/platform\n  org:\n    repository: git@example.com:org.git\n    path: ./stores/org\n",
+    );
+
+    let redact = run_cli(&[
+        "redact",
+        "--config",
+        root.path().join("llmwiki.yaml").to_str().unwrap(),
+        "--store",
+        "team:platform",
+        "--target-scope",
+        "org",
+        "promote.md",
+    ]);
+    let report_path = redact["redaction_result"]["report_path"]
+        .as_str()
+        .expect("report_path must be present")
+        .to_string();
+
+    let proposal = run_cli(&[
+        "propose",
+        "--config",
+        root.path().join("llmwiki.yaml").to_str().unwrap(),
+        "--from-store",
+        "team:platform",
+        "--to-store",
+        "org",
+        "--reviewer",
+        "riley",
+        "--approver",
+        "ada",
+        "--redaction-report",
+        &report_path,
+        "promote.md",
+    ]);
+
+    let draft = &proposal["proposal_draft"];
+    assert_eq!(draft["from_scope"], "team");
+    assert_eq!(draft["to_scope"], "org");
+    assert_eq!(draft["from_store"], "team:platform");
+    assert_eq!(draft["to_store"], "org");
+    assert!(draft["from_repository"].is_null());
+    assert_eq!(draft["to_repository"], "git@example.com:org.git");
+    assert_eq!(draft["source_pages"], json!(["promote.md"]));
+    assert_eq!(draft["validation"], "complete");
+}
+
+#[test]
 fn store_propose_rejects_private_to_org_without_team_step() {
     let root = tempdir().unwrap();
     let private = root.path().join("private");
