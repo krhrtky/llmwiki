@@ -7,6 +7,8 @@ pub const DEFAULT_NO_MATCH_REASON: &str = "no matching policy; default hold";
 pub struct AccessRequest {
     pub subject: AccessSubject,
     pub scope: String,
+    pub store_id: Option<String>,
+    pub team_id: Option<String>,
     pub operation: String,
     pub content_level: String,
     pub resource: AccessResource,
@@ -17,6 +19,10 @@ pub struct AccessPolicy {
     pub policy_id: String,
     pub subject: AccessSubject,
     pub scope: String,
+    #[serde(default)]
+    pub store_id: Option<String>,
+    #[serde(default)]
+    pub team_id: Option<String>,
     pub operation: String,
     pub content_level: String,
     pub resource: AccessResource,
@@ -37,6 +43,10 @@ pub struct AccessDecisionLog {
     pub subject: String,
     pub operation: String,
     pub content_level: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub store_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team_id: Option<String>,
     pub resource: String,
     pub decision: AccessDecision,
     pub policy_ids: Vec<String>,
@@ -86,13 +96,15 @@ struct MatchedPolicy<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct Specificity([u8; 7]);
+struct Specificity([u8; 9]);
 
 impl Specificity {
     fn from_policy(request: &AccessRequest, policy: &AccessPolicy) -> Self {
         Self([
             exact_match(&policy.resource.selector, &request.resource.selector) as u8,
             exact_match(&policy.resource.type_, &request.resource.type_) as u8,
+            exact_optional_match(&policy.store_id, &request.store_id) as u8,
+            exact_optional_match(&policy.team_id, &request.team_id) as u8,
             exact_match(&policy.operation, &request.operation) as u8,
             exact_match(&policy.content_level, &request.content_level) as u8,
             exact_match(&policy.scope, &request.scope) as u8,
@@ -141,6 +153,8 @@ pub fn evaluate_access(
         subject: serialize_audit_subject(&request.subject),
         operation: request.operation,
         content_level: request.content_level,
+        store_id: request.store_id,
+        team_id: request.team_id,
         resource: serialize_audit_resource(&request.resource),
         decision,
         policy_ids,
@@ -183,6 +197,8 @@ fn policy_matches(request: &AccessRequest, policy: &AccessPolicy) -> bool {
     matches_field(&policy.subject.kind, &request.subject.kind)
         && matches_field(&policy.subject.id, &request.subject.id)
         && matches_field(&policy.scope, &request.scope)
+        && matches_optional_field(&policy.store_id, &request.store_id)
+        && matches_optional_field(&policy.team_id, &request.team_id)
         && matches_field(&policy.operation, &request.operation)
         && matches_field(&policy.content_level, &request.content_level)
         && matches_field(&policy.resource.type_, &request.resource.type_)
@@ -195,6 +211,22 @@ fn matches_field(policy_value: &str, request_value: &str) -> bool {
 
 fn exact_match(policy_value: &str, request_value: &str) -> bool {
     policy_value != "*" && policy_value == request_value
+}
+
+fn matches_optional_field(policy_value: &Option<String>, request_value: &Option<String>) -> bool {
+    match policy_value.as_deref() {
+        None | Some("*") => true,
+        Some(policy_value) => request_value.as_deref() == Some(policy_value),
+    }
+}
+
+fn exact_optional_match(policy_value: &Option<String>, request_value: &Option<String>) -> bool {
+    match (policy_value.as_deref(), request_value.as_deref()) {
+        (Some(policy_value), Some(request_value)) => {
+            policy_value != "*" && policy_value == request_value
+        }
+        _ => false,
+    }
 }
 
 fn serialize_audit_subject(subject: &AccessSubject) -> String {
@@ -229,6 +261,8 @@ mod tests {
         AccessRequest {
             subject,
             scope: scope.to_string(),
+            store_id: None,
+            team_id: None,
             operation: operation.to_string(),
             content_level: content_level.to_string(),
             resource,
@@ -243,6 +277,8 @@ mod tests {
                 id: "*".to_string(),
             },
             scope: "*".to_string(),
+            store_id: None,
+            team_id: None,
             operation: "*".to_string(),
             content_level: "*".to_string(),
             resource: AccessResource {
@@ -515,6 +551,8 @@ mod tests {
                 resource: resource("concept_document", "doc-1"),
                 decision: AccessDecision::Allow,
                 reason: "b".to_string(),
+                store_id: None,
+                team_id: None,
                 conditions: AccessConditions::default(),
             },
             AccessPolicy {
@@ -526,6 +564,8 @@ mod tests {
                 resource: resource("concept_document", "doc-1"),
                 decision: AccessDecision::Allow,
                 reason: "a".to_string(),
+                store_id: None,
+                team_id: None,
                 conditions: AccessConditions::default(),
             },
         ];
@@ -572,11 +612,43 @@ mod tests {
     }
 
     #[test]
+    fn team_id_policy_does_not_match_another_team_store() {
+        let mut request = request(
+            subject("user", "alice"),
+            "team",
+            "query",
+            "content",
+            resource("concept_document", "docs/page.md"),
+        );
+        request.store_id = Some("team:payments".to_string());
+        request.team_id = Some("payments".to_string());
+
+        let policies = vec![AccessPolicy {
+            scope: "team".to_string(),
+            store_id: Some("team:platform".to_string()),
+            team_id: Some("platform".to_string()),
+            operation: "query".to_string(),
+            content_level: "content".to_string(),
+            resource: resource("concept_document", "*"),
+            ..policy("platform-query", AccessDecision::Allow, "platform only")
+        }];
+
+        let log = evaluate_access(request, &policies, context("query", "2026-07-05T00:00:09Z"));
+
+        assert_eq!(log.decision, AccessDecision::Hold);
+        assert!(log.policy_ids.is_empty());
+        assert_eq!(log.store_id, Some("team:payments".to_string()));
+        assert_eq!(log.team_id, Some("payments".to_string()));
+    }
+
+    #[test]
     fn serde_roundtrip_preserves_policy_and_decision_log_shape() {
         let policy = AccessPolicy {
             policy_id: "policy-1".to_string(),
             subject: subject("role", "team_owner"),
             scope: "team".to_string(),
+            store_id: None,
+            team_id: None,
             operation: "query".to_string(),
             content_level: "summary".to_string(),
             resource: resource("concept_document", "doc-1"),
@@ -601,6 +673,8 @@ mod tests {
             subject: serde_json::to_string(&policy.subject).expect("subject json"),
             operation: policy.operation.clone(),
             content_level: policy.content_level.clone(),
+            store_id: None,
+            team_id: None,
             resource: serde_json::to_string(&policy.resource).expect("resource json"),
             decision: AccessDecision::Allow,
             policy_ids: vec![policy.policy_id.clone()],

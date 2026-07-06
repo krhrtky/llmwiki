@@ -16,13 +16,14 @@ llmwiki:
 
 ## 共通境界
 
-- すべての操作はローカルの workspace root または bundle root を入力に取る。
+- 通常の操作は root `llmwiki.yaml` の storage registry と `--store` で対象 store を選ぶ。
+- 互換期間中、既存の `--workspace-root` は低レベル入力として受け付ける。
 - `source store` は immutable とし、操作は raw source を上書きしない。
 - `wiki store`、`graph index`、`workflow state` は workspace 管理下のファイルとして扱う。
 - `metadata store` は page owner、reviewer、citation metadata、access policy reference などの運用 metadata を保持する file-first store として扱う。
 - DB、vector DB、外部 service は必須にしない。
 - domain application の case、customer、assignment などは扱わない。
-- パスは workspace root の外に出ないことを前提とし、外部パスは拒否する。
+- パスは選択された store root の外に出ないことを前提とし、外部パスは拒否する。
 
 ## CLI 形状
 
@@ -42,8 +43,10 @@ llmwiki:
 
 | 項目 | 意味 |
 | --- | --- |
-| `workspace_root` | 解析対象の bundle root。必須。 |
-| `scope` | `personal` / `team` / `org` のいずれか。必要な操作のみ指定する。 |
+| `workspace_root` | 互換入力。解析対象の bundle root。`store` 指定時は指定しない。 |
+| `config` | storage registry。省略時は `./llmwiki.yaml`。 |
+| `store` | `private` / `team:<team_id>` / `org` のいずれか。 |
+| `scope` | 互換入力。`store` 指定時は store から導出する。 |
 | `paths` | 対象ファイルまたはページ群。省略時は `workspace_root` 配下全体。 |
 | `content_level` | `metadata` / `summary` / `content`。アクセス制御で使用する。 |
 | `format` | 出力形式。初期実装では `json` のみを正式サポートとする。 |
@@ -53,12 +56,12 @@ llmwiki:
 | Command | Purpose | Input | Output | Failure conditions | File-first boundary |
 | --- | --- | --- | --- | --- | --- |
 | `ingest` | raw source から wiki 更新候補を作る。 | `workspace_root`, `paths`, `scope`。必要なら source type。 | 更新候補ページ、citation、差分候補、取り込み結果。 | source が読めない、形式未対応、scope 外入力、raw source を上書きしようとした場合。 | raw source は読み取りのみ。生成物は wiki candidate として別領域へ出す。 |
-| `query` | wiki を読んで回答する。 | `workspace_root`, `question`, `scope`, `content_level`。 | 回答、citations、confidence、filing candidate metadata。 | アクセス拒否、根拠不足、入力が write side effect を要求した場合。 | 読み取り専用。query 自体は wiki store を更新しない。 |
+| `query` | wiki を読んで回答する。 | `config`, `store`, `question`, `content_level`。互換で `workspace_root`, `scope`。 | 回答、citations、confidence、filing candidate metadata、store metadata。 | アクセス拒否、根拠不足、入力が write side effect を要求した場合。 | 読み取り専用。query 自体は wiki store を更新しない。 |
 | `related` | seed page から relation graph を辿って関連知識を返す。 | `workspace_root`, `seed`, `scope`, `operation`, `content_level`, `subject_kind`, `subject_id`, `access_policy`。 | relation path、access decision、関連ページ、説明付き候補。 | seed 不在、access 拒否、relation traversal 不可、入力が write side effect を要求した場合。 | 読み取り専用。related 自体は wiki store を更新しない。 |
 | `file` | query や ingest の結果を wiki 更新候補として整理する。 | `workspace_root`, `candidate`, `scope`, `owner`, `citations`。 | filing artifact、required metadata、review queue entry。 | citation 不足、scope 不明、owner 未指定、access policy により保存不可の場合。 | wiki 本体を直接更新せず、review または lint 対象の candidate として保存する。 |
 | `lint` | 矛盾、古さ、欠落、broken link を検査する。 | `workspace_root`, `paths`, `scope`。 | lint findings、severity、対象 path。 | parse 不可、bundle 不整合、対象が読めない場合。 | 読み取り専用。修正は別操作に分離する。 |
 | `graph` | Markdown link と relation から graph index を作る。 | `workspace_root`, `paths`。 | graph index、edge list、orphan/broken link findings。 | parse 不可、対象が読めない、graph 生成先を workspace 外に置こうとした場合。 | 生成物は derived index のみ。raw source と wiki を分離する。 |
-| `propose` | 下位 scope から上位 scope へ提出する draft を作る。 | `workspace_root`, `paths`, `from_scope`, `to_scope`, `reviewer`, `approver`。 | proposal draft、diff summary、evidence map、redaction report 参照。 | 上位への昇格でない、redaction/generalization が未完了、reviewer/approver 未指定、`org` 向けの human review なし。 | proposal draft は source の copy ではなく、別の workflow state として保存する。 |
+| `propose` | 下位 store から上位 store へ提出する draft を作る。 | `config`, `from_store`, `to_store`, `paths`, `reviewer`, `approver`。互換で `workspace_root`, `from_scope`, `to_scope`。 | proposal draft、diff summary、evidence map、redaction report 参照、store metadata。 | 許可された store 遷移でない、org store 未設定、redaction/generalization が未完了、reviewer/approver 未指定、`org` 向けの human review なし。 | proposal draft は source の copy ではなく、別の workflow state として保存する。 |
 | `redact` | 秘匿情報を検出し、redaction report を作る。 | `workspace_root`, `paths`, `target_scope`。 | 検出結果、変換方針、残リスク、sanitized draft。 | 検出不能、一般化不能、残リスクが許容できない場合。 | raw source は変更せず、別の sanitized artifact を作る。 |
 | `export` | bundle または scope を出力する。 | `workspace_root`, `paths` または `scope`, `content_level`。 | export artifact、manifest、対象一覧。 | 参照不可の内容を含む、未対応形式、workspace 外への出力。 | export は複製物を作るだけで、原本は変えない。 |
 
@@ -78,6 +81,7 @@ llmwiki:
 - workflow state は本文 page に隣接する `*.workflow.yaml` に置く。
 - graph index は再生成可能な derived artifact として別領域へ出力する。
 - raw source は immutable であり、上記 sidecar や derived artifact で上書きしない。
+- root `llmwiki.yaml` は storage registry の正本であり、page metadata の正本ではない。
 
 ### sidecar 対応
 
@@ -101,6 +105,7 @@ llmwiki:
 - CLI は引数解釈と JSON serialization だけを担当し、command の意味判断は内部関数 API に寄せる。
 - command 間で共有する失敗語彙は `deny`、`hold`、`error` に固定する。
 - storage adapter は内部関数 API の外側に置き、workspace 外 path は adapter 境界で拒否する。
+- `--store` と `--workspace-root` の同時指定は曖昧なため error とする。
 
 ## filing artifact の構造
 
@@ -117,6 +122,24 @@ llmwiki:
 | `risk_owner` | required when sensitive category exists | privacy、security、legal、人事などの判断者。 |
 | `lifecycle` | yes | 初期値は `draft`。 |
 | `access_policy_refs` | yes | 適用する policy の参照。 |
+
+## storage registry
+
+```yaml
+storage:
+  private:
+    path: ./private
+    repository: null
+  teams:
+    - team_id: platform
+      repository: git@example.com:platform.git
+      path: ./stores/teams/platform
+  org:
+    repository: git@example.com:org.git
+    path: ./stores/org
+```
+
+`org` は任意である。未設定時、`--store org` と `team:<team_id> -> org` propose は error または hold とする。
 
 ## Agent Skill 接続
 
@@ -166,7 +189,7 @@ Codex session の取り込み導線は `llmwiki codex-session import --workspace
 - `repo-root` は session の `cwd` filter に使う。省略時は `workspace_root` と同じ repository を対象にする。
 - 出力は `docs/personal/codex-sessions/` の Markdown candidate、隣接 `*.llmwiki.yaml`、および `.llmwiki/codex-sessions/` の manifest とする。
 - 生成 candidate は `type: codex_session_summary`、`llmwiki.scope: personal`、`llmwiki.lifecycle: draft` とする。
-- `redact` と `propose` に渡して `personal -> team` の提案 flow を実演できる。
+- `redact` と `propose` に渡して `private -> team:<team_id>` の提案 flow を実演できる。
 
 ## 失敗の表現
 
@@ -191,3 +214,4 @@ Codex session の取り込み導線は `llmwiki codex-session import --workspace
 - [ADR 013: Finalize M3 CLI Contract](../adr/013-finalize-m3-cli-contract.md)
 - [ADR 015: Store Typed Relations in LLMWiki Sidecar](../adr/015-store-typed-relations-in-llmwiki-sidecar.md)
 - [ADR 020: Use Hybrid Search and Graph Traversal for Related Retrieval](../adr/020-use-hybrid-search-and-graph-traversal-for-related-retrieval.md)（後続の [Related Retrieval 仕様](./retrieval.md) を含む）
+- [ADR 023: Use Storage Registry for Visibility Boundaries](../adr/023-use-storage-registry-for-visibility-boundaries.md)

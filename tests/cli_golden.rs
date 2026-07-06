@@ -481,6 +481,102 @@ fn lint_cli_returns_target_kind_warnings_golden() {
 }
 
 #[test]
+fn query_cli_with_store_returns_store_metadata_golden() {
+    let root = tempdir().unwrap();
+    let team_root = root.path().join("stores").join("teams").join("platform");
+    write_file(team_root.join("docs").join("index.md"), "# Index\n");
+    write_file(
+        team_root.join("docs").join("query.md"),
+        "---\nllmwiki:\n  scope: team\n---\n# Query Target\n\nquery target\n",
+    );
+    write_file(
+        root.path().join("llmwiki.yaml"),
+        "storage:\n  teams:\n    - team_id: platform\n      repository: git@example.com:platform.git\n      path: ./stores/teams/platform\n",
+    );
+    write_file(
+        team_root.join("query-policy.yaml"),
+        "policy:\n  policy_id: query-allow\n  subject:\n    kind: user\n    id: alice\n  scope: team\n  store_id: team:platform\n  team_id: platform\n  operation: query\n  content_level: content\n  resource:\n    type: concept_document\n    selector: \"*\"\n  decision: allow\n  reason: allow query\n",
+    );
+
+    let actual = run_and_normalize(&[
+        "query",
+        "--config",
+        root.path().join("llmwiki.yaml").to_str().unwrap(),
+        "--store",
+        "team:platform",
+        "--question",
+        "query target",
+        "--content-level",
+        "content",
+        "--subject-kind",
+        "user",
+        "--subject-id",
+        "alice",
+        "--access-policy",
+        "query-policy.yaml",
+    ]);
+
+    let result = &actual["query_result"];
+    assert_eq!(result["status"], "success");
+    assert_eq!(result["store_id"], "team:platform");
+    assert_eq!(result["storage_class"], "team");
+    assert_eq!(result["team_id"], "platform");
+    assert_eq!(result["decision_logs"][0]["store_id"], "team:platform");
+    assert_eq!(result["decision_logs"][0]["team_id"], "platform");
+}
+
+#[test]
+fn store_query_does_not_leak_same_scope_from_another_team_store() {
+    let root = tempdir().unwrap();
+    let platform = root.path().join("stores").join("teams").join("platform");
+    let payments = root.path().join("stores").join("teams").join("payments");
+    write_file(platform.join("docs").join("index.md"), "# Index\n");
+    write_file(payments.join("docs").join("index.md"), "# Index\n");
+    write_file(
+        platform.join("docs").join("query.md"),
+        "---\nllmwiki:\n  scope: team\n---\n# Platform Only\n\nshared keyword platform-only\n",
+    );
+    write_file(
+        payments.join("docs").join("query.md"),
+        "---\nllmwiki:\n  scope: team\n---\n# Payments Only\n\nshared keyword payments-only\n",
+    );
+    write_file(
+        root.path().join("llmwiki.yaml"),
+        "storage:\n  teams:\n    - team_id: platform\n      repository: git@example.com:platform.git\n      path: ./stores/teams/platform\n    - team_id: payments\n      repository: git@example.com:payments.git\n      path: ./stores/teams/payments\n",
+    );
+    write_file(
+        platform.join("query-policy.yaml"),
+        "policy:\n  policy_id: platform-query\n  subject:\n    kind: user\n    id: alice\n  scope: team\n  store_id: team:platform\n  team_id: platform\n  operation: query\n  content_level: content\n  resource:\n    type: concept_document\n    selector: \"*\"\n  decision: allow\n  reason: allow platform query\n",
+    );
+
+    let actual = run_cli(&[
+        "query",
+        "--config",
+        root.path().join("llmwiki.yaml").to_str().unwrap(),
+        "--store",
+        "team:platform",
+        "--question",
+        "shared keyword",
+        "--content-level",
+        "content",
+        "--subject-kind",
+        "user",
+        "--subject-id",
+        "alice",
+        "--access-policy",
+        "query-policy.yaml",
+    ]);
+
+    let citations = actual["query_result"]["citations"]
+        .as_array()
+        .expect("citations must be an array");
+    assert_eq!(citations.len(), 1);
+    assert_eq!(citations[0]["title"], "Platform Only");
+    assert_eq!(actual["query_result"]["store_id"], "team:platform");
+    assert_eq!(actual["query_result"]["team_id"], "platform");
+}
+
+#[test]
 fn lint_cli_does_not_require_log_file_golden() {
     let root = tempdir().unwrap();
     bundle_root(root.path());
@@ -846,6 +942,82 @@ fn related_cli_returns_related_result_golden() {
 }
 
 #[test]
+fn store_related_traversal_stays_inside_selected_team_store() {
+    let root = tempdir().unwrap();
+    let platform = root.path().join("stores").join("teams").join("platform");
+    let payments = root.path().join("stores").join("teams").join("payments");
+    write_file(platform.join("docs").join("index.md"), "# Index\n");
+    write_file(payments.join("docs").join("index.md"), "# Index\n");
+    write_file(
+        platform.join("docs").join("procedure.md"),
+        "---\nllmwiki:\n  scope: team\n---\n# Platform Procedure\n\nProcedure body.\n",
+    );
+    write_file(
+        platform.join("docs").join("policy.md"),
+        "---\nllmwiki:\n  scope: team\n---\n# Platform Policy\n\nPlatform policy body.\n",
+    );
+    write_file(
+        platform.join("docs").join("procedure.llmwiki.yaml"),
+        "relations:\n  - type: constrained_by\n    target: policy.md\n",
+    );
+    write_file(
+        payments.join("docs").join("procedure.md"),
+        "---\nllmwiki:\n  scope: team\n---\n# Payments Procedure\n",
+    );
+    write_file(
+        payments.join("docs").join("policy.md"),
+        "---\nllmwiki:\n  scope: team\n---\n# Payments Policy\n\nPayments policy body.\n",
+    );
+    write_file(
+        payments.join("docs").join("procedure.llmwiki.yaml"),
+        "relations:\n  - type: constrained_by\n    target: policy.md\n",
+    );
+    write_file(
+        root.path().join("llmwiki.yaml"),
+        "storage:\n  teams:\n    - team_id: platform\n      repository: git@example.com:platform.git\n      path: ./stores/teams/platform\n    - team_id: payments\n      repository: git@example.com:payments.git\n      path: ./stores/teams/payments\n",
+    );
+    write_file(
+        platform.join("related-policy.yaml"),
+        "policy:\n  policy_id: platform-related\n  subject:\n    kind: user\n    id: alice\n  scope: team\n  store_id: team:platform\n  team_id: platform\n  operation: answer_suggestion\n  content_level: \"*\"\n  resource:\n    type: \"*\"\n    selector: \"*\"\n  decision: allow\n  reason: allow platform related\n",
+    );
+
+    let actual = run_cli(&[
+        "related",
+        "--config",
+        root.path().join("llmwiki.yaml").to_str().unwrap(),
+        "--store",
+        "team:platform",
+        "--operation",
+        "answer_suggestion",
+        "--content-level",
+        "content",
+        "--subject-kind",
+        "user",
+        "--subject-id",
+        "alice",
+        "--access-policy",
+        "related-policy.yaml",
+        "docs/procedure.md",
+    ]);
+
+    let result = &actual["related_result"];
+    assert_eq!(result["status"], "success");
+    assert_eq!(result["store_id"], "team:platform");
+    assert_eq!(result["team_id"], "platform");
+    assert_eq!(result["results"][0]["title"], "Platform Policy");
+    assert!(result.to_string().contains("Platform policy body"));
+    assert!(!result.to_string().contains("Payments policy body"));
+    assert_eq!(
+        result["results"][0]["access_decisions"][0]["log"]["store_id"],
+        "team:platform"
+    );
+    assert_eq!(
+        result["results"][0]["access_decisions"][0]["log"]["team_id"],
+        "platform"
+    );
+}
+
+#[test]
 fn related_cli_returns_hold_golden_for_invalid_operation() {
     let root = tempdir().unwrap();
     bundle_root(root.path());
@@ -1084,6 +1256,119 @@ fn propose_cli_returns_proposal_draft_golden() {
     });
 
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn store_propose_private_to_team_records_store_semantics() {
+    let root = tempdir().unwrap();
+    let private = root.path().join("private");
+    let platform = root.path().join("stores").join("teams").join("platform");
+    write_file(private.join("index.md"), "# Index\n");
+    write_file(
+        private.join("promote.md"),
+        "# Promote\n\nThis page is ready for team review.\n",
+    );
+    write_file(platform.join("index.md"), "# Index\n");
+    write_file(
+        root.path().join("llmwiki.yaml"),
+        "storage:\n  private:\n    path: ./private\n  teams:\n    - team_id: platform\n      repository: git@example.com:platform.git\n      path: ./stores/teams/platform\n",
+    );
+
+    let redact = run_cli(&[
+        "redact",
+        "--config",
+        root.path().join("llmwiki.yaml").to_str().unwrap(),
+        "--store",
+        "private",
+        "--target-scope",
+        "team",
+        "promote.md",
+    ]);
+    assert_eq!(redact["redaction_result"]["target_scope"], "team");
+    let report_path = redact["redaction_result"]["report_path"]
+        .as_str()
+        .expect("report_path must be present")
+        .to_string();
+
+    let proposal = run_cli(&[
+        "propose",
+        "--config",
+        root.path().join("llmwiki.yaml").to_str().unwrap(),
+        "--from-store",
+        "private",
+        "--to-store",
+        "team:platform",
+        "--reviewer",
+        "riley",
+        "--approver",
+        "ada",
+        "--redaction-report",
+        &report_path,
+        "promote.md",
+    ]);
+
+    let draft = &proposal["proposal_draft"];
+    assert_eq!(draft["from_scope"], "personal");
+    assert_eq!(draft["to_scope"], "team");
+    assert_eq!(draft["from_store"], "private");
+    assert_eq!(draft["to_store"], "team:platform");
+    assert_eq!(draft["to_repository"], "git@example.com:platform.git");
+    assert_eq!(draft["source_pages"], json!(["promote.md"]));
+    assert_eq!(draft["validation"], "complete");
+}
+
+#[test]
+fn store_propose_rejects_private_to_org_without_team_step() {
+    let root = tempdir().unwrap();
+    let private = root.path().join("private");
+    let org = root.path().join("stores").join("org");
+    write_file(private.join("index.md"), "# Index\n");
+    write_file(private.join("promote.md"), "# Promote\n");
+    write_file(org.join("index.md"), "# Index\n");
+    write_file(
+        root.path().join("llmwiki.yaml"),
+        "storage:\n  private:\n    path: ./private\n  org:\n    repository: git@example.com:org.git\n    path: ./stores/org\n",
+    );
+
+    let redact = run_cli(&[
+        "redact",
+        "--config",
+        root.path().join("llmwiki.yaml").to_str().unwrap(),
+        "--store",
+        "private",
+        "--target-scope",
+        "org",
+        "promote.md",
+    ]);
+    let report_path = redact["redaction_result"]["report_path"]
+        .as_str()
+        .expect("report_path must be present")
+        .to_string();
+
+    let actual = run_cli(&[
+        "propose",
+        "--config",
+        root.path().join("llmwiki.yaml").to_str().unwrap(),
+        "--from-store",
+        "private",
+        "--to-store",
+        "org",
+        "--reviewer",
+        "riley",
+        "--approver",
+        "ada",
+        "--redaction-report",
+        &report_path,
+        "promote.md",
+    ]);
+
+    assert_eq!(actual["command_result"]["status"], "hold");
+    assert!(
+        actual["command_result"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("private -> org is not allowed")
+    );
 }
 
 #[test]

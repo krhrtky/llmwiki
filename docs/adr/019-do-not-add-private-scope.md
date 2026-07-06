@@ -9,7 +9,7 @@ llmwiki:
 
 ## Status
 
-Accepted
+Superseded by [ADR 023](./023-use-storage-registry-for-visibility-boundaries.md)
 
 ## Context
 

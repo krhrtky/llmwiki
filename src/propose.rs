@@ -2,6 +2,7 @@ use crate::markdown::parse_markdown;
 use crate::report::{
     ProposalDraft, ProposalEvidence, ProposalPublishLink, RedactionReportEnvelope,
 };
+use crate::storage::{StoreContext, VisibilityStoreKind};
 use chrono::Utc;
 use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
@@ -43,6 +44,8 @@ pub fn propose_workspace(
     reviewer: Option<String>,
     approver: Option<String>,
     redaction_report: Option<PathBuf>,
+    from_store: Option<StoreContext>,
+    to_store: Option<StoreContext>,
 ) -> Result<ProposalDraft, ProposeError> {
     let root = resolve_workspace_root(workspace_root)?;
 
@@ -51,6 +54,15 @@ pub fn propose_workspace(
             message: "at least one path is required".to_string(),
         });
     }
+
+    let from_scope = from_store
+        .as_ref()
+        .map(StoreContext::legacy_scope)
+        .or(from_scope);
+    let to_scope = to_store
+        .as_ref()
+        .map(StoreContext::legacy_scope)
+        .or(to_scope);
 
     let Some(from_scope) = required_non_empty(from_scope.as_deref()) else {
         return Err(ProposeError::Hold {
@@ -78,7 +90,7 @@ pub fn propose_workspace(
         });
     };
 
-    validate_scope_promotion(from_scope, to_scope)?;
+    validate_promotion(from_scope, to_scope, from_store.as_ref(), to_store.as_ref())?;
 
     let bundle_root = content_root(&root);
     let source_pages = collect_markdown_paths(&root, &bundle_root, paths)?;
@@ -171,6 +183,14 @@ pub fn propose_workspace(
         source_pages: source_pages.clone(),
         from_scope: from_scope.to_string(),
         to_scope: to_scope.to_string(),
+        from_store: from_store.as_ref().map(|store| store.store_id.clone()),
+        to_store: to_store.as_ref().map(|store| store.store_id.clone()),
+        from_repository: from_store
+            .as_ref()
+            .and_then(|store| store.repository_identity.clone()),
+        to_repository: to_store
+            .as_ref()
+            .and_then(|store| store.repository_identity.clone()),
         reviewer: reviewer.to_string(),
         approver: approver.to_string(),
         lifecycle: "proposed".to_string(),
@@ -197,6 +217,29 @@ pub fn propose_workspace(
     Ok(draft)
 }
 
+fn validate_promotion(
+    from_scope: &str,
+    to_scope: &str,
+    from_store: Option<&StoreContext>,
+    to_store: Option<&StoreContext>,
+) -> Result<(), ProposeError> {
+    if from_store.is_some() || to_store.is_some() {
+        let Some(from_store) = from_store else {
+            return Err(ProposeError::Hold {
+                message: "from_store is required when to_store is specified".to_string(),
+            });
+        };
+        let Some(to_store) = to_store else {
+            return Err(ProposeError::Hold {
+                message: "to_store is required when from_store is specified".to_string(),
+            });
+        };
+        return validate_store_promotion(from_store, to_store);
+    }
+
+    validate_scope_promotion(from_scope, to_scope)
+}
+
 fn validate_scope_promotion(from_scope: &str, to_scope: &str) -> Result<(), ProposeError> {
     let from_rank = scope_rank(from_scope).ok_or_else(|| ProposeError::Hold {
         message: format!("invalid from_scope: {from_scope}"),
@@ -205,7 +248,7 @@ fn validate_scope_promotion(from_scope: &str, to_scope: &str) -> Result<(), Prop
         message: format!("invalid to_scope: {to_scope}"),
     })?;
 
-    if to_rank <= from_rank || from_scope == "org" {
+    if to_rank != from_rank + 1 || from_scope == "org" {
         return Err(ProposeError::Hold {
             message: format!(
                 "propose requires promotion only: {from_scope} -> {to_scope} is not allowed"
@@ -214,6 +257,25 @@ fn validate_scope_promotion(from_scope: &str, to_scope: &str) -> Result<(), Prop
     }
 
     Ok(())
+}
+
+fn validate_store_promotion(
+    from_store: &StoreContext,
+    to_store: &StoreContext,
+) -> Result<(), ProposeError> {
+    match (
+        from_store.visibility_store_kind,
+        to_store.visibility_store_kind,
+    ) {
+        (VisibilityStoreKind::Private, VisibilityStoreKind::Team) => Ok(()),
+        (VisibilityStoreKind::Team, VisibilityStoreKind::Org) => Ok(()),
+        _ => Err(ProposeError::Hold {
+            message: format!(
+                "propose requires explicit store promotion only: {} -> {} is not allowed",
+                from_store.store_id, to_store.store_id
+            ),
+        }),
+    }
 }
 
 fn read_redaction_report(path: &Path) -> Result<RedactionReportEnvelope, ProposeError> {

@@ -47,11 +47,11 @@ llmwiki:
 | --- | --- | --- | --- |
 | `type` | yes for concept documents | string | 非空 |
 | `llmwiki` | yes for LLMWiki concept documents | object | LLMWiki 固有 metadata の namespace |
-| `llmwiki.scope` | yes for LLMWiki concept documents | string | `personal` / `team` / `org` のいずれか |
+| `llmwiki.scope` | no for new storage-registry documents | string | 互換 metadata。既存値は `personal` / `team` / `org` のいずれか |
 
 - `llmwiki` 配下に置かない top-level key は、OKF の producer-defined key として許容する。
 - `llmwiki` 配下の追加 key は producer-defined とし、この profile では個別の意味を固定しない。
-- `llmwiki.scope` は document の有効範囲を表す論理ラベルであり、保存場所そのものを意味しない。
+- `llmwiki.scope` は旧互換 metadata であり、新規の可視性境界は root `llmwiki.yaml` の storage registry で表す。
 - unknown top-level key は read で許容し、writer は既存の unknown key を破壊してはならない。
 - unknown top-level key は lint warning の対象とする。
 - docs 間の navigation、根拠参照、bundle 内の graph edge の正本は Markdown link である。
@@ -59,14 +59,11 @@ llmwiki:
 
 ### 4. scope 表現
 
-- `personal` は個人の発見、仮説、個人メモを表す。
-- `team` は実務に耐える再利用可能な局所知識を表す。
-- `org` は組織横断の正規知識、語彙、制約、ポリシー、公式判断を表す。
-- scope は `personal -> team -> org` の 3 層で表現する。
-- `private` は scope に追加しない。個人/private 相当の知識は `personal` とし、秘匿度、公開可否、operation ごとの参照可否は access policy と metadata で扱う。
-- `org` は全文中央集約ではない。scope は意味論であり、中央保存を要求しない。
-- `personal` の管理主体は作成者個人、`team` の管理主体は対象チーム、`org` の管理主体は組織横断の reviewer または owner とする。
-- 下位 scope から上位 scope へ移す場合は、直接 copy せず propose workflow を通す。
+- `private` は個人の発見、仮説、個人メモを置く storage visibility boundary である。
+- `team:<team_id>` は実務に耐える再利用可能な局所知識を置く storage visibility boundary である。
+- `org` は組織横断の正規知識、語彙、制約、ポリシー、公式判断を置く任意の storage visibility boundary である。
+- `personal` scope は既存文書の migration input とし、private store に対応づける。
+- 下位 store から上位 store へ移す場合は、直接 copy せず propose workflow を通す。
 
 ### 5. Markdown link rule
 
@@ -120,8 +117,8 @@ llmwiki:
 
 ## 既存 SoT docs の初期補完
 
-- 既存の SoT docs を初期登録するときは、`llmwiki.scope: team` と `llmwiki.lifecycle: active` を既定値として補完する。
-- `private` は現行 scope には含めず、個人相当の知識は `personal` として扱う。
+- 既存の SoT docs を初期登録するときは、storage registry の対象 store を正本とし、必要に応じて旧 `llmwiki.scope` を互換 metadata として残す。
+- 既存の `llmwiki.scope: personal` は private store への migration input として扱う。
 
 ## Related Requirements
 
@@ -132,3 +129,4 @@ llmwiki:
 
 - [ADR 006](../adr/006-adopt-okf-compatible-markdown.md)
 - [ADR 007](../adr/007-extend-okf-with-llmwiki-namespace.md)
+- [ADR 023](../adr/023-use-storage-registry-for-visibility-boundaries.md)

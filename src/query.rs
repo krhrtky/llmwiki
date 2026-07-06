@@ -4,6 +4,7 @@ use crate::access::{
 };
 use crate::markdown::{parse_markdown, MarkdownDocument};
 use crate::report::{FilingCandidateMetadata, QueryCitation, QueryResult};
+use crate::storage::StoreContext;
 use chrono::Utc;
 use std::fmt::{Display, Formatter};
 use std::fs;
@@ -43,6 +44,7 @@ pub fn query_workspace(
     subject_kind: Option<String>,
     subject_id: Option<String>,
     access_policy_paths: Vec<PathBuf>,
+    store_context: Option<StoreContext>,
 ) -> Result<QueryResult, QueryError> {
     let root = resolve_workspace_root(workspace_root)?;
     let generated_at = Utc::now().to_rfc3339();
@@ -174,6 +176,12 @@ pub fn query_workspace(
                     id: subject_id.to_string(),
                 },
                 scope: scope.to_string(),
+                store_id: store_context
+                    .as_ref()
+                    .map(|context| context.store_id.clone()),
+                team_id: store_context
+                    .as_ref()
+                    .and_then(|context| context.team_id.clone()),
                 operation: "query".to_string(),
                 content_level: content_level.to_string(),
                 resource: AccessResource {

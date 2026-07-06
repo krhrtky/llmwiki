@@ -5,6 +5,7 @@ use crate::access::{
 use crate::graph::build_graph_index;
 use crate::markdown::{parse_markdown, MarkdownDocument};
 use crate::report::{RelatedAccessDecision, RelatedRelationStep, RelatedResult, RelatedResultItem};
+use crate::storage::StoreContext;
 use chrono::Utc;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -52,6 +53,7 @@ pub struct RelatedInput {
     pub access_policy_paths: Vec<PathBuf>,
     pub depth: Option<usize>,
     pub limit: Option<usize>,
+    pub store_context: Option<StoreContext>,
 }
 
 pub fn related_workspace(input: RelatedInput) -> Result<RelatedResult, RelatedError> {
@@ -269,6 +271,7 @@ pub fn related_workspace(input: RelatedInput) -> Result<RelatedResult, RelatedEr
         },
         &policies,
         &generated_at,
+        input.store_context.as_ref(),
     );
     decision_logs.push(seed_log.clone());
     if seed_log.decision == AccessDecision::Deny {
@@ -328,6 +331,7 @@ pub fn related_workspace(input: RelatedInput) -> Result<RelatedResult, RelatedEr
             content_level,
             &policies,
             &generated_at,
+            input.store_context.as_ref(),
         ) else {
             continue;
         };
@@ -390,6 +394,7 @@ fn access_candidate(
     content_level: &str,
     policies: &[AccessPolicy],
     generated_at: &str,
+    store_context: Option<&StoreContext>,
 ) -> Option<Vec<RelatedAccessDecision>> {
     let mut access_decisions = vec![related_decision("seed", seed_log.clone())];
     for step in &candidate.steps {
@@ -404,6 +409,7 @@ fn access_candidate(
             },
             policies,
             generated_at,
+            store_context,
         );
         if edge_log.decision != AccessDecision::Allow {
             return None;
@@ -426,6 +432,7 @@ fn access_candidate(
             },
             policies,
             generated_at,
+            store_context,
         );
         if neighbor_log.decision != AccessDecision::Allow {
             return None;
@@ -444,6 +451,7 @@ fn access_candidate(
         },
         policies,
         generated_at,
+        store_context,
     );
     if body_log.decision != AccessDecision::Allow {
         return None;
@@ -467,11 +475,14 @@ fn access_log(
     resource: AccessResource,
     policies: &[AccessPolicy],
     generated_at: &str,
+    store_context: Option<&StoreContext>,
 ) -> AccessDecisionLog {
     evaluate_access(
         AccessRequest {
             subject: subject.clone(),
             scope: scope.to_string(),
+            store_id: store_context.map(|context| context.store_id.clone()),
+            team_id: store_context.and_then(|context| context.team_id.clone()),
             operation: operation.to_string(),
             content_level: content_level.to_string(),
             resource,
@@ -1156,6 +1167,7 @@ policy:
             access_policy_paths: vec![PathBuf::from("policy.yaml"), PathBuf::from("deny-b.yaml")],
             depth: Some(2),
             limit: Some(10),
+            store_context: None,
         })
         .unwrap();
 

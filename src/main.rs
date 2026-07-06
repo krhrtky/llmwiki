@@ -1,9 +1,12 @@
 use clap::{error::ErrorKind, Parser, Subcommand, ValueEnum};
 use llmwiki::commands::{
-    run_codex_session_import_command, run_export_command, run_file_command, run_graph_command,
-    run_ingest_command, run_lint_command, run_propose_command, run_query_command,
-    run_redact_command, run_related_command, run_skill_install_command,
+    run_codex_session_import_command, run_export_command, run_export_command_with_store,
+    run_file_command, run_graph_command, run_ingest_command, run_lint_command, run_propose_command,
+    run_propose_command_with_stores, run_query_command, run_query_command_with_store,
+    run_redact_command, run_related_command, run_related_command_with_store,
+    run_skill_install_command,
 };
+use llmwiki::storage::{resolve_store, StoreContext};
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
@@ -17,8 +20,12 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     Ingest {
-        #[arg(long, default_value = ".")]
-        workspace_root: PathBuf,
+        #[arg(long)]
+        workspace_root: Option<PathBuf>,
+        #[arg(long)]
+        config: Option<PathBuf>,
+        #[arg(long)]
+        store: Option<String>,
         #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
         format: OutputFormat,
         #[arg(long)]
@@ -26,8 +33,12 @@ enum Command {
         paths: Vec<PathBuf>,
     },
     Query {
-        #[arg(long, default_value = ".")]
-        workspace_root: PathBuf,
+        #[arg(long)]
+        workspace_root: Option<PathBuf>,
+        #[arg(long)]
+        config: Option<PathBuf>,
+        #[arg(long)]
+        store: Option<String>,
         #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
         format: OutputFormat,
         #[arg(long)]
@@ -44,8 +55,12 @@ enum Command {
         access_policy: Vec<PathBuf>,
     },
     Related {
-        #[arg(long, default_value = ".")]
-        workspace_root: PathBuf,
+        #[arg(long)]
+        workspace_root: Option<PathBuf>,
+        #[arg(long)]
+        config: Option<PathBuf>,
+        #[arg(long)]
+        store: Option<String>,
         #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
         format: OutputFormat,
         #[arg(long)]
@@ -67,8 +82,12 @@ enum Command {
         seed: Option<PathBuf>,
     },
     File {
-        #[arg(long, default_value = ".")]
-        workspace_root: PathBuf,
+        #[arg(long)]
+        workspace_root: Option<PathBuf>,
+        #[arg(long)]
+        config: Option<PathBuf>,
+        #[arg(long)]
+        store: Option<String>,
         #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
         format: OutputFormat,
         #[arg(long)]
@@ -89,15 +108,25 @@ enum Command {
         candidate: Option<PathBuf>,
     },
     Graph {
-        #[arg(long, default_value = ".")]
-        workspace_root: PathBuf,
+        #[arg(long)]
+        workspace_root: Option<PathBuf>,
+        #[arg(long)]
+        config: Option<PathBuf>,
+        #[arg(long)]
+        store: Option<String>,
         #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
         format: OutputFormat,
         paths: Vec<PathBuf>,
     },
     Propose {
-        #[arg(long, default_value = ".")]
-        workspace_root: PathBuf,
+        #[arg(long)]
+        workspace_root: Option<PathBuf>,
+        #[arg(long)]
+        config: Option<PathBuf>,
+        #[arg(long = "from-store")]
+        from_store: Option<String>,
+        #[arg(long = "to-store")]
+        to_store: Option<String>,
         #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
         format: OutputFormat,
         #[arg(long)]
@@ -113,8 +142,12 @@ enum Command {
         paths: Vec<PathBuf>,
     },
     Redact {
-        #[arg(long, default_value = ".")]
-        workspace_root: PathBuf,
+        #[arg(long)]
+        workspace_root: Option<PathBuf>,
+        #[arg(long)]
+        config: Option<PathBuf>,
+        #[arg(long)]
+        store: Option<String>,
         #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
         format: OutputFormat,
         #[arg(long, value_enum)]
@@ -122,8 +155,12 @@ enum Command {
         paths: Vec<PathBuf>,
     },
     Export {
-        #[arg(long, default_value = ".")]
-        workspace_root: PathBuf,
+        #[arg(long)]
+        workspace_root: Option<PathBuf>,
+        #[arg(long)]
+        config: Option<PathBuf>,
+        #[arg(long)]
+        store: Option<String>,
         #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
         format: OutputFormat,
         #[arg(long, value_enum)]
@@ -139,8 +176,12 @@ enum Command {
         paths: Vec<PathBuf>,
     },
     Lint {
-        #[arg(long, default_value = ".")]
-        workspace_root: PathBuf,
+        #[arg(long)]
+        workspace_root: Option<PathBuf>,
+        #[arg(long)]
+        config: Option<PathBuf>,
+        #[arg(long)]
+        store: Option<String>,
         #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
         format: OutputFormat,
         #[arg(long, value_enum)]
@@ -222,9 +263,14 @@ fn main() {
     let result = match cli.command {
         Command::Lint {
             workspace_root,
+            config,
+            store,
             paths,
             ..
-        } => run_lint_command(&workspace_root, &paths),
+        } => match resolve_store_or_workspace("lint", config, store, workspace_root) {
+            Ok(resolution) => run_lint_command(resolution.workspace_root(), &paths),
+            Err(value) => Ok(value),
+        },
         Command::Skill { command } => match command {
             SkillCommand::Install {
                 workspace_root,
@@ -242,10 +288,17 @@ fn main() {
         },
         Command::Ingest {
             workspace_root,
+            config,
+            store,
             paths,
             scope,
             ..
         } => {
+            let (workspace_root, scope) =
+                match resolve_workspace_and_scope("ingest", config, store, workspace_root, scope) {
+                    Ok(value) => value,
+                    Err(value) => print_and_exit(value),
+                };
             let value = match run_ingest_command(&workspace_root, &paths, scope) {
                 Ok(value) => value,
                 Err(error) => serde_json::json!({
@@ -267,6 +320,8 @@ fn main() {
         }
         Command::Query {
             workspace_root,
+            config,
+            store,
             question,
             scope,
             content_level,
@@ -275,15 +330,28 @@ fn main() {
             access_policy,
             ..
         } => {
-            let value = match run_query_command(
-                &workspace_root,
-                question,
-                scope,
-                content_level,
-                subject_kind,
-                subject_id,
-                access_policy,
-            ) {
+            let value = match resolve_store_or_workspace("query", config, store, workspace_root) {
+                Ok(StoreResolution::Store(store_context)) => run_query_command_with_store(
+                    store_context,
+                    question,
+                    scope,
+                    content_level,
+                    subject_kind,
+                    subject_id,
+                    access_policy,
+                ),
+                Ok(StoreResolution::Workspace(workspace_root)) => run_query_command(
+                    &workspace_root,
+                    question,
+                    scope,
+                    content_level,
+                    subject_kind,
+                    subject_id,
+                    access_policy,
+                ),
+                Err(value) => Ok(value),
+            };
+            let value = match value {
                 Ok(value) => value,
                 Err(error) => serde_json::json!({
                     "query_result": {
@@ -319,6 +387,8 @@ fn main() {
         }
         Command::Related {
             workspace_root,
+            config,
+            store,
             seed,
             operation,
             scope,
@@ -329,20 +399,37 @@ fn main() {
             depth,
             limit,
             ..
-        } => run_related_command(
-            &workspace_root,
-            seed,
-            operation,
-            scope,
-            content_level,
-            subject_kind,
-            subject_id,
-            access_policy,
-            depth,
-            limit,
-        ),
+        } => match resolve_store_or_workspace("related", config, store, workspace_root) {
+            Ok(StoreResolution::Store(store_context)) => run_related_command_with_store(
+                store_context,
+                seed,
+                operation,
+                scope,
+                content_level,
+                subject_kind,
+                subject_id,
+                access_policy,
+                depth,
+                limit,
+            ),
+            Ok(StoreResolution::Workspace(workspace_root)) => run_related_command(
+                &workspace_root,
+                seed,
+                operation,
+                scope,
+                content_level,
+                subject_kind,
+                subject_id,
+                access_policy,
+                depth,
+                limit,
+            ),
+            Err(value) => Ok(value),
+        },
         Command::File {
             workspace_root,
+            config,
+            store,
             scope,
             owner,
             reviewer,
@@ -352,24 +439,39 @@ fn main() {
             access_policy_ref,
             candidate,
             ..
-        } => run_file_command(
-            &workspace_root,
-            candidate,
-            scope,
-            owner,
-            reviewer,
-            risk_owner,
-            confidence,
-            citation,
-            access_policy_ref,
-        ),
+        } => {
+            let (workspace_root, scope) =
+                match resolve_workspace_and_scope("file", config, store, workspace_root, scope) {
+                    Ok(value) => value,
+                    Err(value) => print_and_exit(value),
+                };
+            run_file_command(
+                &workspace_root,
+                candidate,
+                scope,
+                owner,
+                reviewer,
+                risk_owner,
+                confidence,
+                citation,
+                access_policy_ref,
+            )
+        }
         Command::Graph {
             workspace_root,
+            config,
+            store,
             paths,
             ..
-        } => run_graph_command(&workspace_root, &paths),
+        } => match resolve_store_or_workspace("graph", config, store, workspace_root) {
+            Ok(resolution) => run_graph_command(resolution.workspace_root(), &paths),
+            Err(value) => Ok(value),
+        },
         Command::Propose {
             workspace_root,
+            config,
+            from_store,
+            to_store,
             paths,
             from_scope,
             to_scope,
@@ -377,27 +479,54 @@ fn main() {
             approver,
             redaction_report,
             ..
-        } => run_propose_command(
-            &workspace_root,
-            &paths,
-            from_scope,
-            to_scope,
-            reviewer,
-            approver,
-            redaction_report,
-        ),
+        } => {
+            let legacy_workspace_root =
+                workspace_root.clone().unwrap_or_else(|| PathBuf::from("."));
+            match resolve_propose_stores("propose", config, from_store, to_store, workspace_root) {
+                Ok(Some((from_store, to_store))) => run_propose_command_with_stores(
+                    from_store,
+                    to_store,
+                    &paths,
+                    reviewer,
+                    approver,
+                    redaction_report,
+                ),
+                Ok(None) => run_propose_command(
+                    &legacy_workspace_root,
+                    &paths,
+                    from_scope,
+                    to_scope,
+                    reviewer,
+                    approver,
+                    redaction_report,
+                ),
+                Err(value) => Ok(value),
+            }
+        }
         Command::Redact {
             workspace_root,
+            config,
+            store,
             target_scope,
             paths,
             ..
-        } => run_redact_command(
-            &workspace_root,
-            target_scope.map(scope_arg_to_string),
-            &paths,
-        ),
+        } => match resolve_store_or_workspace("redact", config, store, workspace_root) {
+            Ok(StoreResolution::Store(store_context)) => run_redact_command(
+                &store_context.canonical_root,
+                target_scope.map(scope_arg_to_string),
+                &paths,
+            ),
+            Ok(StoreResolution::Workspace(workspace_root)) => run_redact_command(
+                &workspace_root,
+                target_scope.map(scope_arg_to_string),
+                &paths,
+            ),
+            Err(value) => Ok(value),
+        },
         Command::Export {
             workspace_root,
+            config,
+            store,
             scope,
             content_level,
             subject_kind,
@@ -406,15 +535,28 @@ fn main() {
             paths,
             ..
         } => {
-            let value = match run_export_command(
-                &workspace_root,
-                &paths,
-                scope.map(scope_arg_to_string),
-                content_level,
-                subject_kind,
-                subject_id,
-                access_policy,
-            ) {
+            let value = match resolve_store_or_workspace("export", config, store, workspace_root) {
+                Ok(StoreResolution::Store(store_context)) => run_export_command_with_store(
+                    store_context,
+                    &paths,
+                    scope.map(scope_arg_to_string),
+                    content_level,
+                    subject_kind,
+                    subject_id,
+                    access_policy,
+                ),
+                Ok(StoreResolution::Workspace(workspace_root)) => run_export_command(
+                    &workspace_root,
+                    &paths,
+                    scope.map(scope_arg_to_string),
+                    content_level,
+                    subject_kind,
+                    subject_id,
+                    access_policy,
+                ),
+                Err(value) => Ok(value),
+            };
+            let value = match value {
                 Ok(value) => value,
                 Err(error) => serde_json::json!({
                     "command_result": {
@@ -441,6 +583,108 @@ fn main() {
             std::process::exit(1);
         }
     }
+}
+
+enum StoreResolution {
+    Workspace(PathBuf),
+    Store(StoreContext),
+}
+
+impl StoreResolution {
+    fn workspace_root(&self) -> &PathBuf {
+        match self {
+            Self::Workspace(path) => path,
+            Self::Store(context) => &context.canonical_root,
+        }
+    }
+}
+
+fn resolve_store_or_workspace(
+    command: &str,
+    config: Option<PathBuf>,
+    store: Option<String>,
+    workspace_root: Option<PathBuf>,
+) -> Result<StoreResolution, serde_json::Value> {
+    match store {
+        Some(store) => {
+            if workspace_root.is_some() {
+                return Err(command_status(
+                    command,
+                    "error",
+                    "--store and --workspace-root cannot be specified together",
+                ));
+            }
+            let config = config.unwrap_or_else(|| PathBuf::from("llmwiki.yaml"));
+            resolve_store(&config, &store)
+                .map(StoreResolution::Store)
+                .map_err(|error| command_status(command, "error", error.to_string()))
+        }
+        None => Ok(StoreResolution::Workspace(
+            workspace_root.unwrap_or_else(|| PathBuf::from(".")),
+        )),
+    }
+}
+
+fn resolve_workspace_and_scope(
+    command: &str,
+    config: Option<PathBuf>,
+    store: Option<String>,
+    workspace_root: Option<PathBuf>,
+    scope: Option<String>,
+) -> Result<(PathBuf, Option<String>), serde_json::Value> {
+    match resolve_store_or_workspace(command, config, store, workspace_root)? {
+        StoreResolution::Workspace(workspace_root) => Ok((workspace_root, scope)),
+        StoreResolution::Store(store_context) => {
+            let scope = scope.or_else(|| Some(store_context.legacy_scope()));
+            Ok((store_context.canonical_root, scope))
+        }
+    }
+}
+
+fn resolve_propose_stores(
+    command: &str,
+    config: Option<PathBuf>,
+    from_store: Option<String>,
+    to_store: Option<String>,
+    workspace_root: Option<PathBuf>,
+) -> Result<Option<(StoreContext, StoreContext)>, serde_json::Value> {
+    if from_store.is_none() && to_store.is_none() {
+        return Ok(None);
+    }
+    if workspace_root.is_some() {
+        return Err(command_status(
+            command,
+            "error",
+            "--from-store/--to-store and --workspace-root cannot be specified together",
+        ));
+    }
+    let Some(from_store) = from_store else {
+        return Err(command_status(command, "hold", "from_store is required"));
+    };
+    let Some(to_store) = to_store else {
+        return Err(command_status(command, "hold", "to_store is required"));
+    };
+    let config = config.unwrap_or_else(|| PathBuf::from("llmwiki.yaml"));
+    let from_store = resolve_store(&config, &from_store)
+        .map_err(|error| command_status(command, "error", error.to_string()))?;
+    let to_store = resolve_store(&config, &to_store)
+        .map_err(|error| command_status(command, "error", error.to_string()))?;
+    Ok(Some((from_store, to_store)))
+}
+
+fn command_status(command: &str, status: &str, message: impl ToString) -> serde_json::Value {
+    serde_json::json!({
+        "command_result": {
+            "command": command,
+            "status": status,
+            "message": message.to_string()
+        }
+    })
+}
+
+fn print_and_exit(value: serde_json::Value) -> ! {
+    print_json(&value);
+    std::process::exit(1);
 }
 
 fn print_json(value: &serde_json::Value) {
@@ -514,7 +758,7 @@ policy:
                 access_policy,
                 ..
             } => run_query_command(
-                &workspace_root,
+                &workspace_root.unwrap_or_else(|| PathBuf::from(".")),
                 question,
                 scope,
                 content_level,
@@ -562,7 +806,7 @@ policy:
                 access_policy,
                 ..
             } => run_query_command(
-                &workspace_root,
+                &workspace_root.unwrap_or_else(|| PathBuf::from(".")),
                 question,
                 scope,
                 content_level,
@@ -666,6 +910,7 @@ mod tests {
                 redaction_report,
                 ..
             } => {
+                let workspace_root = workspace_root.unwrap_or_else(|| PathBuf::from("."));
                 let value = run_propose_command(
                     &workspace_root,
                     &paths,
@@ -706,6 +951,7 @@ mod tests {
                 scope,
                 ..
             } => {
+                let workspace_root = workspace_root.unwrap_or_else(|| PathBuf::from("."));
                 let value = run_ingest_command(&workspace_root, &paths, scope).unwrap();
                 assert!(value.get("ingest_result").is_some());
             }
@@ -734,6 +980,7 @@ mod tests {
             ..
         } = missing_scope.command
         {
+            let workspace_root = workspace_root.unwrap_or_else(|| PathBuf::from("."));
             let value = run_ingest_command(&workspace_root, &paths, scope).unwrap();
             assert_eq!(value["ingest_result"]["status"], "hold");
         }
@@ -754,6 +1001,7 @@ mod tests {
             ..
         } = missing_paths.command
         {
+            let workspace_root = workspace_root.unwrap_or_else(|| PathBuf::from("."));
             let value = run_ingest_command(&workspace_root, &paths, scope).unwrap();
             assert_eq!(value["ingest_result"]["status"], "hold");
         }
@@ -783,6 +1031,7 @@ mod tests {
                 scope,
                 ..
             } => {
+                let workspace_root = workspace_root.unwrap_or_else(|| PathBuf::from("."));
                 let value = run_ingest_command(&workspace_root, &paths, scope).unwrap();
                 assert_eq!(value["ingest_result"]["status"], "hold");
             }

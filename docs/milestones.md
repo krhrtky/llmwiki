@@ -38,7 +38,7 @@ llmwiki:
 | M1 SoT | ADR 001, ADR 010 |
 | M2 Format | ADR 006, ADR 007, ADR 009, ADR 010 |
 | M3 CLI/API | ADR 008, ADR 011, ADR 013 |
-| M4 Workflow | ADR 002, ADR 003, ADR 004, ADR 005, ADR 012 |
+| M4 Workflow | ADR 003, ADR 004, ADR 005, ADR 012, ADR 023 |
 | M5 Maintenance | ADR 001, ADR 010, ADR 011, ADR 014 |
 
 ## 完了ルール

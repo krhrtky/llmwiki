@@ -14,3 +14,4 @@ pub mod related;
 pub mod report;
 pub mod sidecar;
 pub mod skill;
+pub mod storage;

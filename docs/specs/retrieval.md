@@ -18,7 +18,8 @@ related retrieval は次の順序で実行する。
 1. query intent を決める。
 2. seed page を明示入力として受け取る。
 3. seed から relation graph を辿る。
-4. 各 traversal step で operation-aware access control を適用する。
+4. 選択された store root の内側だけを traversal 対象にする。
+5. 各 traversal step で operation-aware access control を適用する。
 5. relation weight、distance、confidence、freshness、sensitivity で rerank する。
 6. context と explain path を返す。
 
@@ -112,7 +113,9 @@ llmwiki related --workspace-root . --scope team docs/procedure.md \
 | Option | Required | Meaning |
 | --- | --- | --- |
 | `workspace_root` | yes | 解析対象 bundle root。 |
-| `scope` | yes | `personal` / `team` / `org` のいずれか。access check に使う。 |
+| `config` | preferred | storage registry。 |
+| `store` | preferred | `private` / `team:<team_id>` / `org` のいずれか。 |
+| `scope` | compatibility | `personal` / `team` / `org` のいずれか。store 指定時は導出する。 |
 | `seed` | yes | 関連展開の起点となる page path。section fragment は初期実装では受け付けない。 |
 | `operation` | yes | `answer_suggestion` / `impact_analysis` / `propose`。`global_summary` は後続 adapter として扱う。 |
 | `content_level` | yes | `metadata` / `summary` / `content`。 |
@@ -199,6 +202,7 @@ llmwiki related --workspace-root . --scope team docs/procedure.md \
 ### Access Check Stages
 
 access check は最終出力だけでなく traversal の各段階で行う。
+store selector を使う場合、traversal は選択 store の canonical root に閉じる。cross-store link は取得対象ではなく evidence または blocked reference として扱う。
 
 - seed node
 - neighbor edge

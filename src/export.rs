@@ -4,6 +4,7 @@ use crate::access::{
 };
 use crate::markdown::parse_markdown;
 use crate::report::{ExportArtifact, ExportArtifactEnvelope, ExportFile};
+use crate::storage::StoreContext;
 use chrono::Utc;
 use std::fmt::{Display, Formatter};
 use std::fs;
@@ -50,6 +51,7 @@ pub fn export_workspace(
     subject_kind: Option<String>,
     subject_id: Option<String>,
     access_policy_paths: Vec<PathBuf>,
+    store_context: Option<StoreContext>,
 ) -> Result<ExportOutcome, ExportError> {
     let root = resolve_workspace_root(workspace_root)?;
 
@@ -174,6 +176,12 @@ pub fn export_workspace(
                 .as_deref()
                 .map(str::to_string)
                 .unwrap_or_else(|| page_scope.clone()),
+            store_id: store_context
+                .as_ref()
+                .map(|context| context.store_id.clone()),
+            team_id: store_context
+                .as_ref()
+                .and_then(|context| context.team_id.clone()),
             operation: "export".to_string(),
             content_level: content_level.to_string(),
             resource: AccessResource {

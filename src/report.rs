@@ -349,6 +349,14 @@ pub struct ProposalDraft {
     pub source_pages: Vec<String>,
     pub from_scope: String,
     pub to_scope: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_store: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_store: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_repository: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_repository: Option<String>,
     pub reviewer: String,
     pub approver: String,
     pub lifecycle: String,

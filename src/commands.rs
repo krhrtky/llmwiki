@@ -15,6 +15,7 @@ use crate::report::{
     SkillInstallResultEnvelope,
 };
 use crate::skill::install_llmwiki_skill;
+use crate::storage::StoreContext;
 use chrono::Utc;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -100,8 +101,41 @@ pub fn run_query_command(
         subject_kind,
         subject_id,
         access_policy_paths,
+        None,
     ) {
         Ok(query_result) => to_value(QueryResultEnvelope { query_result })?,
+        Err(error) => query_error_value(error),
+    };
+    Ok(result)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn run_query_command_with_store(
+    store_context: StoreContext,
+    question: Option<String>,
+    scope: Option<String>,
+    content_level: Option<String>,
+    subject_kind: Option<String>,
+    subject_id: Option<String>,
+    access_policy_paths: Vec<PathBuf>,
+) -> Result<serde_json::Value, LintError> {
+    let store_metadata = store_context.clone();
+    let workspace_root = store_context.canonical_root.clone();
+    let result = match query_workspace(
+        &workspace_root,
+        question,
+        scope.or_else(|| Some(store_context.legacy_scope())),
+        content_level,
+        subject_kind,
+        subject_id,
+        access_policy_paths,
+        Some(store_context),
+    ) {
+        Ok(query_result) => annotate_store_value(
+            to_value(QueryResultEnvelope { query_result })?,
+            "query_result",
+            &store_metadata,
+        ),
         Err(error) => query_error_value(error),
     };
     Ok(result)
@@ -131,8 +165,46 @@ pub fn run_related_command(
         access_policy_paths,
         depth,
         limit,
+        store_context: None,
     }) {
         Ok(related_result) => to_value(RelatedResultEnvelope { related_result })?,
+        Err(error) => related_error_value(error),
+    };
+    Ok(result)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn run_related_command_with_store(
+    store_context: StoreContext,
+    seed: Option<PathBuf>,
+    operation: Option<String>,
+    scope: Option<String>,
+    content_level: Option<String>,
+    subject_kind: Option<String>,
+    subject_id: Option<String>,
+    access_policy_paths: Vec<PathBuf>,
+    depth: Option<usize>,
+    limit: Option<usize>,
+) -> Result<serde_json::Value, LintError> {
+    let store_metadata = store_context.clone();
+    let result = match related_workspace(RelatedInput {
+        workspace_root: store_context.canonical_root.clone(),
+        seed,
+        operation,
+        scope: scope.or_else(|| Some(store_context.legacy_scope())),
+        content_level,
+        subject_kind,
+        subject_id,
+        access_policy_paths,
+        depth,
+        limit,
+        store_context: Some(store_context),
+    }) {
+        Ok(related_result) => annotate_store_value(
+            to_value(RelatedResultEnvelope { related_result })?,
+            "related_result",
+            &store_metadata,
+        ),
         Err(error) => related_error_value(error),
     };
     Ok(result)
@@ -156,11 +228,88 @@ pub fn run_export_command(
         subject_kind,
         subject_id,
         access_policy_paths,
+        None,
     )? {
         ExportOutcome::Artifact(artifact) => to_value(ExportArtifactEnvelope {
             export_artifact: artifact,
         })
         .map_err(export_serialization_error),
+        ExportOutcome::Hold { message } => to_value(CommandStatusEnvelope {
+            command_result: CommandStatus {
+                command: "export".to_string(),
+                status: "hold".to_string(),
+                message,
+            },
+        })
+        .map_err(export_serialization_error),
+        ExportOutcome::Deny { message } => to_value(CommandStatusEnvelope {
+            command_result: CommandStatus {
+                command: "export".to_string(),
+                status: "deny".to_string(),
+                message,
+            },
+        })
+        .map_err(export_serialization_error),
+    }
+}
+
+fn annotate_store_value(
+    mut value: serde_json::Value,
+    envelope: &str,
+    store_context: &StoreContext,
+) -> serde_json::Value {
+    if let Some(object) = value
+        .get_mut(envelope)
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        object.insert(
+            "store_id".to_string(),
+            serde_json::Value::String(store_context.store_id.clone()),
+        );
+        object.insert(
+            "storage_class".to_string(),
+            serde_json::Value::String(store_context.visibility_store_kind.as_str().to_string()),
+        );
+        if let Some(team_id) = &store_context.team_id {
+            object.insert(
+                "team_id".to_string(),
+                serde_json::Value::String(team_id.clone()),
+            );
+        }
+    }
+    value
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn run_export_command_with_store(
+    store_context: StoreContext,
+    paths: &[PathBuf],
+    scope: Option<String>,
+    content_level: Option<String>,
+    subject_kind: Option<String>,
+    subject_id: Option<String>,
+    access_policy_paths: Vec<PathBuf>,
+) -> Result<serde_json::Value, ExportError> {
+    let store_metadata = store_context.clone();
+    let workspace_root = store_context.canonical_root.clone();
+    match export_workspace(
+        &workspace_root,
+        paths,
+        scope.or_else(|| Some(store_context.legacy_scope())),
+        content_level,
+        subject_kind,
+        subject_id,
+        access_policy_paths,
+        Some(store_context),
+    )? {
+        ExportOutcome::Artifact(artifact) => Ok(annotate_store_value(
+            to_value(ExportArtifactEnvelope {
+                export_artifact: artifact,
+            })
+            .map_err(export_serialization_error)?,
+            "export_artifact",
+            &store_metadata,
+        )),
         ExportOutcome::Hold { message } => to_value(CommandStatusEnvelope {
             command_result: CommandStatus {
                 command: "export".to_string(),
@@ -278,6 +427,43 @@ pub fn run_propose_command(
         reviewer,
         approver,
         redaction_report,
+        None,
+        None,
+    ) {
+        Ok(value) => match to_value(ProposalDraftEnvelope {
+            proposal_draft: value,
+        }) {
+            Ok(value) => value,
+            Err(error) => propose_serialization_error(error.to_string()),
+        },
+        Err(error) => match propose_status(error) {
+            Ok(value) => value,
+            Err(error) => propose_serialization_error(error.to_string()),
+        },
+    };
+    Ok(value)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn run_propose_command_with_stores(
+    from_store: StoreContext,
+    to_store: StoreContext,
+    paths: &[PathBuf],
+    reviewer: Option<String>,
+    approver: Option<String>,
+    redaction_report: Option<PathBuf>,
+) -> Result<serde_json::Value, LintError> {
+    let workspace_root = from_store.canonical_root.clone();
+    let value = match propose_workspace(
+        &workspace_root,
+        paths,
+        Some(from_store.legacy_scope()),
+        Some(to_store.legacy_scope()),
+        reviewer,
+        approver,
+        redaction_report,
+        Some(from_store),
+        Some(to_store),
     ) {
         Ok(value) => match to_value(ProposalDraftEnvelope {
             proposal_draft: value,
