@@ -94,10 +94,23 @@ llmwiki skill install --workspace-root . --codex-home ~/.codex
 
 ## Install
 
-ローカル利用は次で十分です。
+Repository を clone し、release build した binary を `PATH` 上の directory に配置します。
 
 ```bash
-cargo install --path .
+git clone https://github.com/krhrtky/llmwiki.git
+cd llmwiki
+cargo build --release
+mkdir -p ~/.local/bin
+cp target/release/llmwiki ~/.local/bin/llmwiki
+export PATH="$HOME/.local/bin:$PATH"
+llmwiki --help
+```
+
+zsh で `PATH` 追加を永続化する場合は次を実行します。
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
 ```
 
 開発中は次でも動きます。
