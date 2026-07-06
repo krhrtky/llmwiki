@@ -51,8 +51,8 @@ enum Command {
         subject_kind: Option<String>,
         #[arg(long = "subject-id")]
         subject_id: Option<String>,
-        #[arg(long = "access-policy")]
-        access_policy: Vec<PathBuf>,
+        #[arg(long = "retrieval-scope")]
+        retrieval_scope: Vec<PathBuf>,
     },
     Related {
         #[arg(long)]
@@ -73,8 +73,8 @@ enum Command {
         subject_kind: Option<String>,
         #[arg(long = "subject-id")]
         subject_id: Option<String>,
-        #[arg(long = "access-policy")]
-        access_policy: Vec<PathBuf>,
+        #[arg(long = "retrieval-scope")]
+        retrieval_scope: Vec<PathBuf>,
         #[arg(long)]
         depth: Option<usize>,
         #[arg(long)]
@@ -102,8 +102,6 @@ enum Command {
         confidence: Option<String>,
         #[arg(long)]
         citation: Vec<String>,
-        #[arg(long)]
-        access_policy_ref: Vec<String>,
         #[arg(long)]
         candidate: Option<PathBuf>,
     },
@@ -171,8 +169,8 @@ enum Command {
         subject_kind: Option<String>,
         #[arg(long = "subject-id")]
         subject_id: Option<String>,
-        #[arg(long = "access-policy")]
-        access_policy: Vec<PathBuf>,
+        #[arg(long = "export-scope")]
+        export_scope: Vec<PathBuf>,
         paths: Vec<PathBuf>,
     },
     Lint {
@@ -327,7 +325,7 @@ fn main() {
             content_level,
             subject_kind,
             subject_id,
-            access_policy,
+            retrieval_scope,
             ..
         } => {
             let value = match resolve_store_or_workspace("query", config, store, workspace_root) {
@@ -338,7 +336,7 @@ fn main() {
                     content_level,
                     subject_kind,
                     subject_id,
-                    access_policy,
+                    retrieval_scope,
                 ),
                 Ok(StoreResolution::Workspace(workspace_root)) => run_query_command(
                     &workspace_root,
@@ -347,7 +345,7 @@ fn main() {
                     content_level,
                     subject_kind,
                     subject_id,
-                    access_policy,
+                    retrieval_scope,
                 ),
                 Err(value) => Ok(value),
             };
@@ -365,7 +363,7 @@ fn main() {
                         "citations": [],
                         "confidence": "low",
                         "matched_pages": [],
-                        "decision_logs": [],
+                        "scope_evaluations": [],
                         "filing_candidate_metadata": {
                             "source": "query",
                             "scope": "",
@@ -376,7 +374,6 @@ fn main() {
                             "reviewer": null,
                             "risk_owner": null,
                             "lifecycle": "draft",
-                            "access_policy_refs": [],
                             "subject_kind": null,
                             "subject_id": null
                         }
@@ -395,7 +392,7 @@ fn main() {
             content_level,
             subject_kind,
             subject_id,
-            access_policy,
+            retrieval_scope,
             depth,
             limit,
             ..
@@ -408,7 +405,7 @@ fn main() {
                 content_level,
                 subject_kind,
                 subject_id,
-                access_policy,
+                retrieval_scope,
                 depth,
                 limit,
             ),
@@ -420,7 +417,7 @@ fn main() {
                 content_level,
                 subject_kind,
                 subject_id,
-                access_policy,
+                retrieval_scope,
                 depth,
                 limit,
             ),
@@ -436,7 +433,6 @@ fn main() {
             risk_owner,
             confidence,
             citation,
-            access_policy_ref,
             candidate,
             ..
         } => {
@@ -454,7 +450,6 @@ fn main() {
                 risk_owner,
                 confidence,
                 citation,
-                access_policy_ref,
             )
         }
         Command::Graph {
@@ -531,7 +526,7 @@ fn main() {
             content_level,
             subject_kind,
             subject_id,
-            access_policy,
+            export_scope,
             paths,
             ..
         } => {
@@ -543,7 +538,7 @@ fn main() {
                     content_level,
                     subject_kind,
                     subject_id,
-                    access_policy,
+                    export_scope,
                 ),
                 Ok(StoreResolution::Workspace(workspace_root)) => run_export_command(
                     &workspace_root,
@@ -552,7 +547,7 @@ fn main() {
                     content_level,
                     subject_kind,
                     subject_id,
-                    access_policy,
+                    export_scope,
                 ),
                 Err(value) => Ok(value),
             };
@@ -712,8 +707,8 @@ mod query_cli_tests {
         write_file(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: query-allow
+retrieval_scope:
+  rule_id: query-allow
   subject:
     kind: user
     id: alice
@@ -723,7 +718,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow query
 "#,
         );
@@ -743,7 +738,7 @@ policy:
             "user",
             "--subject-id",
             "alice",
-            "--access-policy",
+            "--retrieval-scope",
             "policy.yaml",
         ])
         .unwrap();
@@ -755,7 +750,7 @@ policy:
                 content_level,
                 subject_kind,
                 subject_id,
-                access_policy,
+                retrieval_scope,
                 ..
             } => run_query_command(
                 &workspace_root.unwrap_or_else(|| PathBuf::from(".")),
@@ -764,7 +759,7 @@ policy:
                 content_level,
                 subject_kind,
                 subject_id,
-                access_policy,
+                retrieval_scope,
             )
             .unwrap(),
             _ => unreachable!(),
@@ -791,7 +786,7 @@ policy:
             "user",
             "--subject-id",
             "alice",
-            "--access-policy",
+            "--retrieval-scope",
             "policy.yaml",
         ])
         .unwrap();
@@ -803,7 +798,7 @@ policy:
                 content_level,
                 subject_kind,
                 subject_id,
-                access_policy,
+                retrieval_scope,
                 ..
             } => run_query_command(
                 &workspace_root.unwrap_or_else(|| PathBuf::from(".")),
@@ -812,7 +807,7 @@ policy:
                 content_level,
                 subject_kind,
                 subject_id,
-                access_policy,
+                retrieval_scope,
             )
             .unwrap(),
             _ => unreachable!(),

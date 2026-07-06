@@ -36,33 +36,37 @@ impl Display for ProposeError {
 
 impl std::error::Error for ProposeError {}
 
-pub fn propose_workspace(
-    workspace_root: &Path,
-    paths: &[PathBuf],
-    from_scope: Option<String>,
-    to_scope: Option<String>,
-    reviewer: Option<String>,
-    approver: Option<String>,
-    redaction_report: Option<PathBuf>,
-    from_store: Option<StoreContext>,
-    to_store: Option<StoreContext>,
-) -> Result<ProposalDraft, ProposeError> {
-    let root = resolve_workspace_root(workspace_root)?;
+pub struct ProposeInput<'a> {
+    pub workspace_root: &'a Path,
+    pub paths: &'a [PathBuf],
+    pub from_scope: Option<String>,
+    pub to_scope: Option<String>,
+    pub reviewer: Option<String>,
+    pub approver: Option<String>,
+    pub redaction_report: Option<PathBuf>,
+    pub from_store: Option<StoreContext>,
+    pub to_store: Option<StoreContext>,
+}
 
-    if paths.is_empty() {
+pub fn propose_workspace(input: ProposeInput<'_>) -> Result<ProposalDraft, ProposeError> {
+    let root = resolve_workspace_root(input.workspace_root)?;
+
+    if input.paths.is_empty() {
         return Err(ProposeError::Hold {
             message: "at least one path is required".to_string(),
         });
     }
 
-    let from_scope = from_store
+    let from_scope = input
+        .from_store
         .as_ref()
         .map(StoreContext::legacy_scope)
-        .or(from_scope);
-    let to_scope = to_store
+        .or(input.from_scope);
+    let to_scope = input
+        .to_store
         .as_ref()
         .map(StoreContext::legacy_scope)
-        .or(to_scope);
+        .or(input.to_scope);
 
     let Some(from_scope) = required_non_empty(from_scope.as_deref()) else {
         return Err(ProposeError::Hold {
@@ -74,26 +78,31 @@ pub fn propose_workspace(
             message: "to_scope is required".to_string(),
         });
     };
-    let Some(reviewer) = required_non_empty(reviewer.as_deref()) else {
+    let Some(reviewer) = required_non_empty(input.reviewer.as_deref()) else {
         return Err(ProposeError::Hold {
             message: "reviewer is required".to_string(),
         });
     };
-    let Some(approver) = required_non_empty(approver.as_deref()) else {
+    let Some(approver) = required_non_empty(input.approver.as_deref()) else {
         return Err(ProposeError::Hold {
             message: "approver is required".to_string(),
         });
     };
-    let Some(redaction_report_path) = redaction_report.as_ref() else {
+    let Some(redaction_report_path) = input.redaction_report.as_ref() else {
         return Err(ProposeError::Hold {
             message: "redaction_report is required".to_string(),
         });
     };
 
-    validate_promotion(from_scope, to_scope, from_store.as_ref(), to_store.as_ref())?;
+    validate_promotion(
+        from_scope,
+        to_scope,
+        input.from_store.as_ref(),
+        input.to_store.as_ref(),
+    )?;
 
     let bundle_root = content_root(&root);
-    let source_pages = collect_markdown_paths(&root, &bundle_root, paths)?;
+    let source_pages = collect_markdown_paths(&root, &bundle_root, input.paths)?;
     if source_pages.is_empty() {
         return Err(ProposeError::InvalidWorkspace {
             message: "specified paths do not contain any markdown files".to_string(),
@@ -183,12 +192,17 @@ pub fn propose_workspace(
         source_pages: source_pages.clone(),
         from_scope: from_scope.to_string(),
         to_scope: to_scope.to_string(),
-        from_store: from_store.as_ref().map(|store| store.store_id.clone()),
-        to_store: to_store.as_ref().map(|store| store.store_id.clone()),
-        from_repository: from_store
+        from_store: input
+            .from_store
+            .as_ref()
+            .map(|store| store.store_id.clone()),
+        to_store: input.to_store.as_ref().map(|store| store.store_id.clone()),
+        from_repository: input
+            .from_store
             .as_ref()
             .and_then(|store| store.repository_identity.clone()),
-        to_repository: to_store
+        to_repository: input
+            .to_store
             .as_ref()
             .and_then(|store| store.repository_identity.clone()),
         reviewer: reviewer.to_string(),

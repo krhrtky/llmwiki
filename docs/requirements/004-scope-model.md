@@ -13,7 +13,7 @@ llmwiki:
 
 ## Problem
 
-policy だけに依存すると、CLI や Agent が誤った root を渡した場合に別の store を探索できてしまう。完全分散だけでは、共通語彙、横断ポリシー、組織判断が共有されない。
+scope rule だけに依存すると、CLI や Agent が誤った root を渡した場合に別の store を探索できてしまう。完全分散だけでは、共通語彙、横断ポリシー、組織判断が共有されない。
 
 ## Goals
 

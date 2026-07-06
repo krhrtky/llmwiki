@@ -4,7 +4,7 @@ use crate::file::{file_candidate, FileCommandInput};
 use crate::graph::build_graph_index;
 use crate::ingest::{ingest_workspace, IngestError};
 use crate::lint::{lint_workspace, LintError};
-use crate::propose::{propose_workspace, ProposeError};
+use crate::propose::{propose_workspace, ProposeError, ProposeInput};
 use crate::query::{query_workspace, QueryError};
 use crate::redact::{redact_workspace, RedactError};
 use crate::related::{related_workspace, RelatedError, RelatedInput};
@@ -91,7 +91,7 @@ pub fn run_query_command(
     content_level: Option<String>,
     subject_kind: Option<String>,
     subject_id: Option<String>,
-    access_policy_paths: Vec<PathBuf>,
+    retrieval_scope_paths: Vec<PathBuf>,
 ) -> Result<serde_json::Value, LintError> {
     let result = match query_workspace(
         workspace_root,
@@ -100,7 +100,7 @@ pub fn run_query_command(
         content_level,
         subject_kind,
         subject_id,
-        access_policy_paths,
+        retrieval_scope_paths,
         None,
     ) {
         Ok(query_result) => to_value(QueryResultEnvelope { query_result })?,
@@ -117,7 +117,7 @@ pub fn run_query_command_with_store(
     content_level: Option<String>,
     subject_kind: Option<String>,
     subject_id: Option<String>,
-    access_policy_paths: Vec<PathBuf>,
+    retrieval_scope_paths: Vec<PathBuf>,
 ) -> Result<serde_json::Value, LintError> {
     let store_metadata = store_context.clone();
     let workspace_root = store_context.canonical_root.clone();
@@ -128,7 +128,7 @@ pub fn run_query_command_with_store(
         content_level,
         subject_kind,
         subject_id,
-        access_policy_paths,
+        retrieval_scope_paths,
         Some(store_context),
     ) {
         Ok(query_result) => annotate_store_value(
@@ -150,7 +150,7 @@ pub fn run_related_command(
     content_level: Option<String>,
     subject_kind: Option<String>,
     subject_id: Option<String>,
-    access_policy_paths: Vec<PathBuf>,
+    retrieval_scope_paths: Vec<PathBuf>,
     depth: Option<usize>,
     limit: Option<usize>,
 ) -> Result<serde_json::Value, LintError> {
@@ -162,7 +162,7 @@ pub fn run_related_command(
         content_level,
         subject_kind,
         subject_id,
-        access_policy_paths,
+        retrieval_scope_paths,
         depth,
         limit,
         store_context: None,
@@ -182,7 +182,7 @@ pub fn run_related_command_with_store(
     content_level: Option<String>,
     subject_kind: Option<String>,
     subject_id: Option<String>,
-    access_policy_paths: Vec<PathBuf>,
+    retrieval_scope_paths: Vec<PathBuf>,
     depth: Option<usize>,
     limit: Option<usize>,
 ) -> Result<serde_json::Value, LintError> {
@@ -195,7 +195,7 @@ pub fn run_related_command_with_store(
         content_level,
         subject_kind,
         subject_id,
-        access_policy_paths,
+        retrieval_scope_paths,
         depth,
         limit,
         store_context: Some(store_context),
@@ -218,7 +218,7 @@ pub fn run_export_command(
     content_level: Option<String>,
     subject_kind: Option<String>,
     subject_id: Option<String>,
-    access_policy_paths: Vec<PathBuf>,
+    export_scope_paths: Vec<PathBuf>,
 ) -> Result<serde_json::Value, ExportError> {
     match export_workspace(
         workspace_root,
@@ -227,7 +227,7 @@ pub fn run_export_command(
         content_level,
         subject_kind,
         subject_id,
-        access_policy_paths,
+        export_scope_paths,
         None,
     )? {
         ExportOutcome::Artifact(artifact) => to_value(ExportArtifactEnvelope {
@@ -288,7 +288,7 @@ pub fn run_export_command_with_store(
     content_level: Option<String>,
     subject_kind: Option<String>,
     subject_id: Option<String>,
-    access_policy_paths: Vec<PathBuf>,
+    export_scope_paths: Vec<PathBuf>,
 ) -> Result<serde_json::Value, ExportError> {
     let store_metadata = store_context.clone();
     let workspace_root = store_context.canonical_root.clone();
@@ -299,7 +299,7 @@ pub fn run_export_command_with_store(
         content_level,
         subject_kind,
         subject_id,
-        access_policy_paths,
+        export_scope_paths,
         Some(store_context),
     )? {
         ExportOutcome::Artifact(artifact) => Ok(annotate_store_value(
@@ -339,7 +339,6 @@ pub fn run_file_command(
     risk_owner: Option<String>,
     confidence: Option<String>,
     citations: Vec<String>,
-    access_policy_refs: Vec<String>,
 ) -> Result<serde_json::Value, LintError> {
     Ok(
         match file_candidate(FileCommandInput {
@@ -351,7 +350,6 @@ pub fn run_file_command(
             risk_owner,
             confidence,
             citations,
-            access_policy_refs,
         }) {
             Ok(value) => value,
             Err(error) => to_value(CommandStatusEnvelope {
@@ -419,7 +417,7 @@ pub fn run_propose_command(
     approver: Option<String>,
     redaction_report: Option<PathBuf>,
 ) -> Result<serde_json::Value, LintError> {
-    let value = match propose_workspace(
+    let value = match propose_workspace(ProposeInput {
         workspace_root,
         paths,
         from_scope,
@@ -427,9 +425,9 @@ pub fn run_propose_command(
         reviewer,
         approver,
         redaction_report,
-        None,
-        None,
-    ) {
+        from_store: None,
+        to_store: None,
+    }) {
         Ok(value) => match to_value(ProposalDraftEnvelope {
             proposal_draft: value,
         }) {
@@ -454,17 +452,17 @@ pub fn run_propose_command_with_stores(
     redaction_report: Option<PathBuf>,
 ) -> Result<serde_json::Value, LintError> {
     let workspace_root = from_store.canonical_root.clone();
-    let value = match propose_workspace(
-        &workspace_root,
+    let value = match propose_workspace(ProposeInput {
+        workspace_root: &workspace_root,
         paths,
-        Some(from_store.legacy_scope()),
-        Some(to_store.legacy_scope()),
+        from_scope: Some(from_store.legacy_scope()),
+        to_scope: Some(to_store.legacy_scope()),
         reviewer,
         approver,
         redaction_report,
-        Some(from_store),
-        Some(to_store),
-    ) {
+        from_store: Some(from_store),
+        to_store: Some(to_store),
+    }) {
         Ok(value) => match to_value(ProposalDraftEnvelope {
             proposal_draft: value,
         }) {
@@ -552,7 +550,7 @@ fn query_error_value(error: QueryError) -> serde_json::Value {
             "citations": [],
             "confidence": "low",
             "matched_pages": [],
-            "decision_logs": [],
+            "scope_evaluations": [],
             "filing_candidate_metadata": {
                 "source": "query",
                 "scope": "",
@@ -563,7 +561,6 @@ fn query_error_value(error: QueryError) -> serde_json::Value {
                 "reviewer": null,
                 "risk_owner": null,
                 "lifecycle": "draft",
-                "access_policy_refs": [],
                 "subject_kind": null,
                 "subject_id": null
             }
@@ -583,7 +580,7 @@ fn related_error_value(error: RelatedError) -> serde_json::Value {
             "content_level": null,
             "depth": 0,
             "results": [],
-            "decision_logs": []
+            "scope_evaluations": []
         }
     })
 }

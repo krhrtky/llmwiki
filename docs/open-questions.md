@@ -27,7 +27,7 @@ llmwiki:
 - M3 では CLI/API output の正式 transport を JSON のみに固定し、Markdown report は派生表示として扱う。詳細は [ADR 013](./adr/013-finalize-m3-cli-contract.md)。
 - typed relation の補助 metadata は `page.llmwiki.yaml` に保存する。Markdown link は graph edge の正本であり、typed relation は補助 metadata として扱う。詳細は [ADR 015](./adr/015-store-typed-relations-in-llmwiki-sidecar.md)。
 - `index.md` は bundle の必須入口であり、`log.md` は予約ファイルとして許容するが必須ではない。詳細は [ADR 010](./adr/010-use-index-and-log-for-progressive-disclosure.md)。
-- access policy の評価順序は `deny > hold > allow` とし、一致 policy がない場合は `hold` とする。specificity は同一 decision 内の説明対象選択に使う。詳細は [ADR 016](./adr/016-finalize-access-policy-evaluation.md)。
+- scope rule の評価順序は `exclude > hold > include` とし、一致 rule がない場合は `hold` とする。specificity は同一 selection 内の説明対象選択に使う。詳細は [ADR 016](./adr/016-finalize-access-policy-evaluation.md)。
 - 初期 redaction scan は rule-based deterministic とし、redaction report と sanitized draft は `.llmwiki/redactions/` に保存する。詳細は [ADR 017](./adr/017-use-rule-based-redaction-scan-initially.md)。
 - 本文意味比較による contradiction / stale 検出と source 更新に基づく stale claim 検出は初期完成の必須範囲に含めない。詳細は [ADR 018](./adr/018-defer-semantic-maintenance-detection.md)。
 
@@ -39,8 +39,8 @@ llmwiki:
 
 ## 解決済み（M4）
 
-- `hold` は lifecycle state に昇格させず、policy/review decision として `*.workflow.yaml` に記録する。decision log は監査用の派生記録とする。
-- operation-aware access control は policy object と decision log の最小項目まで M4 で固定し、評価順序と競合解決は ADR 016 で固定した。詳細は [ADR 016](./adr/016-finalize-access-policy-evaluation.md)。
+- `hold` は lifecycle state に昇格させず、scope evaluation/review selection として `*.workflow.yaml` に記録する。scope evaluation は監査用の派生記録とする。
+- operation-aware access control は scope rule と scope evaluation の最小項目まで M4 で固定し、評価順序と競合解決は ADR 016 で固定した。詳細は [ADR 016](./adr/016-finalize-access-policy-evaluation.md)。
 - `org` publish の承認者は human role とし、基本は `domain_owner`、sensitive category が残る場合は該当 `risk_owner` を追加承認者とする。
 
 ## 解決済み（M5）

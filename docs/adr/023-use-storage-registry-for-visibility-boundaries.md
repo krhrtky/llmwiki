@@ -15,7 +15,7 @@ Supersedes [ADR 002](./002-adopt-personal-team-org-scope.md) and [ADR 019](./019
 
 ## Context
 
-Operation-aware access control can decide whether an operation may read content, but it does not by itself prevent a command from traversing the wrong repository or bundle. LLMWiki needs a boundary where private knowledge, team knowledge, and org knowledge can be separated before policy evaluation.
+Operation-aware access control can decide whether an operation may read content, but it does not by itself prevent a command from traversing the wrong repository or bundle. LLMWiki needs a boundary where private knowledge, team knowledge, and org knowledge can be separated before scope evaluation.
 
 The earlier `personal -> team -> org` scope model mixed the effective audience of knowledge with the physical location used to protect it. This became ambiguous once `team` needed multiple repositories and `org` was not yet mandatory.
 
@@ -36,7 +36,7 @@ Repository identity and canonical root must be unique across configured stores. 
 ## Alternatives
 
 - Keep `personal -> team -> org` as logical scope and add storage as a second axis: preserves compatibility but keeps two overlapping classification systems.
-- Use only access policy: simple on paper, but physical traversal remains dependent on the caller passing the correct root.
+- Use only scope rules: simple on paper, but physical traversal remains dependent on the caller passing the correct root.
 - Require `org` immediately: over-constrains an area still under evaluation.
 
 ## Rationale
@@ -51,7 +51,7 @@ Keeping `org` optional allows private and team use cases to work before org publ
 - Positive: multiple team repositories are represented without overloading `scope: team`.
 - Positive: org can be introduced later without changing private/team store semantics.
 - Negative: existing `workspace_root` / `scope` command inputs need a migration period.
-- Negative: access policy, decision logs, proposal drafts, graph/export artifacts need store identity fields.
+- Negative: scope rules, scope evaluations, proposal drafts, graph/export artifacts need store identity fields.
 
 ## Related Requirements
 
@@ -59,4 +59,3 @@ Keeping `org` optional allows private and team use cases to work before org publ
 - [Requirement 006](../requirements/006-propose-workflow.md)
 - [Requirement 008](../requirements/008-operation-aware-access-control.md)
 - [Requirement 014](../requirements/014-storage-boundary.md)
-

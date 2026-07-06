@@ -19,7 +19,7 @@ ADR 004 で `propose` に redaction / generalization gate を必須化した。w
 
 ## Decision
 
-初期 redaction scan は rule-based deterministic scan とする。LLM、外部 DLP service、外部 policy engine は初期実装の必須依存にしない。
+初期 redaction scan は rule-based deterministic scan とする。LLM、外部 DLP service、外部 scope rule engine は初期実装の必須依存にしない。
 
 初期 scanner は、次の category を rule set として扱う。
 

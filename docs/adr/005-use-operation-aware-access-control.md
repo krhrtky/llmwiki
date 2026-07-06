@@ -17,7 +17,7 @@ Accepted
 
 ## Decision
 
-LLMWiki は operation-aware access control を採用する。初期 docs では concept model と policy object / decision log の最小契約項目までを固定する。認可エンジンの完全な policy schema は後続設計に残し、評価順序と競合解決は [ADR 016](./016-finalize-access-policy-evaluation.md) で固定する。
+LLMWiki は operation-aware access control を採用する。初期 docs では concept model と scope rule / scope evaluation の最小契約項目までを固定する。完全な rule schema は後続設計に残し、評価順序と競合解決は [ADR 016](./016-finalize-access-policy-evaluation.md) で固定する。
 
 ## Alternatives
 
@@ -33,7 +33,7 @@ LLMWiki は human reader、Agent、CLI、graph builder、exporter、training pip
 
 - Positive: 低リスク操作と高リスク操作を分離できる。
 - Positive: `train` や `export` など高影響操作を明示的に制御できる。
-- Negative: 認可判断と audit log の設計が必要になる。
+- Negative: scope selection と audit log の設計が必要になる。
 
 ## Related Requirements
 
@@ -42,3 +42,4 @@ LLMWiki は human reader、Agent、CLI、graph builder、exporter、training pip
 ## Related ADRs
 
 - [ADR 016](./016-finalize-access-policy-evaluation.md)
+- [ADR 025](./025-rename-access-policy-vocabulary-to-scope-rules.md)

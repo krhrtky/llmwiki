@@ -1,10 +1,12 @@
 use crate::access::{
-    evaluate_access, AccessDecision, AccessDecisionLog, AccessEvaluationContext, AccessPolicy,
-    AccessRequest, AccessResource, AccessSubject,
+    evaluate_scope, ScopeEvaluation, ScopeEvaluationContext, ScopeEvaluationRequest, ScopeResource,
+    ScopeRule, ScopeSelection, ScopeSubject,
 };
 use crate::graph::build_graph_index;
 use crate::markdown::{parse_markdown, MarkdownDocument};
-use crate::report::{RelatedAccessDecision, RelatedRelationStep, RelatedResult, RelatedResultItem};
+use crate::report::{
+    RelatedRelationStep, RelatedResult, RelatedResultItem, RelatedScopeEvaluation,
+};
 use crate::storage::StoreContext;
 use chrono::Utc;
 use std::cmp::Ordering;
@@ -50,7 +52,7 @@ pub struct RelatedInput {
     pub content_level: Option<String>,
     pub subject_kind: Option<String>,
     pub subject_id: Option<String>,
-    pub access_policy_paths: Vec<PathBuf>,
+    pub retrieval_scope_paths: Vec<PathBuf>,
     pub depth: Option<usize>,
     pub limit: Option<usize>,
     pub store_context: Option<StoreContext>,
@@ -215,7 +217,7 @@ pub fn related_workspace(input: RelatedInput) -> Result<RelatedResult, RelatedEr
         ));
     };
 
-    if input.access_policy_paths.is_empty() {
+    if input.retrieval_scope_paths.is_empty() {
         return Ok(hold_result(
             generated_at,
             &seed,
@@ -223,16 +225,21 @@ pub fn related_workspace(input: RelatedInput) -> Result<RelatedResult, RelatedEr
             Some(scope.to_string()),
             Some(content_level.to_string()),
             depth,
-            "at least one access_policy is required",
+            "at least one retrieval_scope is required",
             Vec::new(),
         ));
     }
 
-    let subject = AccessSubject {
+    let subject = ScopeSubject {
         kind: subject_kind.to_string(),
         id: subject_id.to_string(),
     };
-    let policies = load_access_policies(&root, &input.access_policy_paths)?;
+    let scope_rules = load_retrieval_scopes(&root, &input.retrieval_scope_paths)?;
+    let related_scope_context = RelatedScopeContext {
+        scope_rules: &scope_rules,
+        generated_at: &generated_at,
+        store_context: input.store_context.as_ref(),
+    };
     let pages = collect_pages(&root, &content_root(&root))?;
     let Some(seed_page) = pages.get(&seed) else {
         return Ok(hold_result(
@@ -259,22 +266,22 @@ pub fn related_workspace(input: RelatedInput) -> Result<RelatedResult, RelatedEr
         ));
     }
 
-    let mut decision_logs = Vec::new();
-    let seed_log = access_log(
-        &subject,
-        scope,
-        operation,
-        "metadata",
-        AccessResource {
-            type_: "concept_document".to_string(),
-            selector: seed.clone(),
+    let mut scope_evaluations = Vec::new();
+    let seed_log = evaluate_related_scope(
+        RelatedScopeRequest {
+            subject: &subject,
+            scope,
+            operation,
+            content_level: "metadata",
+            resource: ScopeResource {
+                type_: "concept_document".to_string(),
+                selector: seed.clone(),
+            },
         },
-        &policies,
-        &generated_at,
-        input.store_context.as_ref(),
+        &related_scope_context,
     );
-    decision_logs.push(seed_log.clone());
-    if seed_log.decision == AccessDecision::Deny {
+    scope_evaluations.push(seed_log.clone());
+    if seed_log.selection == ScopeSelection::Exclude {
         return Ok(deny_result(
             generated_at,
             &seed,
@@ -282,11 +289,11 @@ pub fn related_workspace(input: RelatedInput) -> Result<RelatedResult, RelatedEr
             scope,
             content_level,
             depth,
-            format!("access denied for seed {seed}: {}", seed_log.reason),
-            decision_logs,
+            format!("scope evaluation excluded seed {seed}: {}", seed_log.reason),
+            scope_evaluations,
         ));
     }
-    if seed_log.decision == AccessDecision::Hold {
+    if seed_log.selection == ScopeSelection::Hold {
         return Ok(hold_result(
             generated_at,
             &seed,
@@ -294,8 +301,8 @@ pub fn related_workspace(input: RelatedInput) -> Result<RelatedResult, RelatedEr
             Some(scope.to_string()),
             Some(content_level.to_string()),
             depth,
-            format!("access hold for seed {seed}: {}", seed_log.reason),
-            decision_logs,
+            format!("scope evaluation held seed {seed}: {}", seed_log.reason),
+            scope_evaluations,
         ));
     }
 
@@ -321,7 +328,7 @@ pub fn related_workspace(input: RelatedInput) -> Result<RelatedResult, RelatedEr
             continue;
         }
 
-        let Some(access_decisions) = access_candidate(
+        let Some(scope_evaluations_for_candidate) = access_candidate(
             &candidate,
             &seed_log,
             &pages,
@@ -329,14 +336,14 @@ pub fn related_workspace(input: RelatedInput) -> Result<RelatedResult, RelatedEr
             scope,
             operation,
             content_level,
-            &policies,
+            &scope_rules,
             &generated_at,
             input.store_context.as_ref(),
         ) else {
             continue;
         };
-        decision_logs.extend(
-            access_decisions
+        scope_evaluations.extend(
+            scope_evaluations_for_candidate
                 .iter()
                 .filter(|decision| decision.stage != "seed")
                 .map(|decision| decision.log.clone()),
@@ -348,7 +355,7 @@ pub fn related_workspace(input: RelatedInput) -> Result<RelatedResult, RelatedEr
             score: candidate.score,
             content: content_for_level(page, content_level),
             relation_paths: vec![candidate.steps.clone()],
-            access_decisions,
+            scope_evaluations: scope_evaluations_for_candidate,
             why: format!(
                 "{} is related from {} through {} at distance {}",
                 candidate.target, seed, candidate.last_step.relation, candidate.distance
@@ -365,7 +372,7 @@ pub fn related_workspace(input: RelatedInput) -> Result<RelatedResult, RelatedEr
             Some(content_level.to_string()),
             depth,
             "no accessible related results found",
-            decision_logs,
+            scope_evaluations,
         ));
     }
 
@@ -379,118 +386,135 @@ pub fn related_workspace(input: RelatedInput) -> Result<RelatedResult, RelatedEr
         content_level: Some(content_level.to_string()),
         depth,
         results,
-        decision_logs,
+        scope_evaluations,
     })
 }
 
 #[allow(clippy::too_many_arguments)]
 fn access_candidate(
     candidate: &Candidate,
-    seed_log: &AccessDecisionLog,
+    seed_log: &ScopeEvaluation,
     pages: &HashMap<String, Page>,
-    subject: &AccessSubject,
+    subject: &ScopeSubject,
     scope: &str,
     operation: &str,
     content_level: &str,
-    policies: &[AccessPolicy],
+    scope_rules: &[ScopeRule],
     generated_at: &str,
     store_context: Option<&StoreContext>,
-) -> Option<Vec<RelatedAccessDecision>> {
-    let mut access_decisions = vec![related_decision("seed", seed_log.clone())];
+) -> Option<Vec<RelatedScopeEvaluation>> {
+    let related_scope_context = RelatedScopeContext {
+        scope_rules,
+        generated_at,
+        store_context,
+    };
+    let mut scope_evaluations = vec![related_scope_evaluation("seed", seed_log.clone())];
     for step in &candidate.steps {
-        let edge_log = access_log(
-            subject,
-            scope,
-            operation,
-            "metadata",
-            AccessResource {
-                type_: "relation_edge".to_string(),
-                selector: edge_selector(step),
+        let edge_log = evaluate_related_scope(
+            RelatedScopeRequest {
+                subject,
+                scope,
+                operation,
+                content_level: "metadata",
+                resource: ScopeResource {
+                    type_: "relation_edge".to_string(),
+                    selector: edge_selector(step),
+                },
             },
-            policies,
-            generated_at,
-            store_context,
+            &related_scope_context,
         );
-        if edge_log.decision != AccessDecision::Allow {
+        if edge_log.selection != ScopeSelection::Include {
             return None;
         }
-        access_decisions.push(related_decision("edge", edge_log));
+        scope_evaluations.push(related_scope_evaluation("edge", edge_log));
 
         let neighbor = step_neighbor(step);
         let page = pages.get(&neighbor)?;
         if page.scope.as_deref() != Some(scope) {
             return None;
         }
-        let neighbor_log = access_log(
+        let neighbor_log = evaluate_related_scope(
+            RelatedScopeRequest {
+                subject,
+                scope,
+                operation,
+                content_level: "metadata",
+                resource: ScopeResource {
+                    type_: "concept_document".to_string(),
+                    selector: neighbor,
+                },
+            },
+            &related_scope_context,
+        );
+        if neighbor_log.selection != ScopeSelection::Include {
+            return None;
+        }
+        scope_evaluations.push(related_scope_evaluation("neighbor", neighbor_log));
+    }
+
+    let body_log = evaluate_related_scope(
+        RelatedScopeRequest {
             subject,
             scope,
             operation,
-            "metadata",
-            AccessResource {
+            content_level,
+            resource: ScopeResource {
                 type_: "concept_document".to_string(),
-                selector: neighbor,
+                selector: candidate.target.clone(),
             },
-            policies,
-            generated_at,
-            store_context,
-        );
-        if neighbor_log.decision != AccessDecision::Allow {
-            return None;
-        }
-        access_decisions.push(related_decision("neighbor", neighbor_log));
-    }
-
-    let body_log = access_log(
-        subject,
-        scope,
-        operation,
-        content_level,
-        AccessResource {
-            type_: "concept_document".to_string(),
-            selector: candidate.target.clone(),
         },
-        policies,
-        generated_at,
-        store_context,
+        &related_scope_context,
     );
-    if body_log.decision != AccessDecision::Allow {
+    if body_log.selection != ScopeSelection::Include {
         return None;
     }
-    access_decisions.push(related_decision("section_body", body_log));
-    Some(access_decisions)
+    scope_evaluations.push(related_scope_evaluation("section_body", body_log));
+    Some(scope_evaluations)
 }
 
-fn related_decision(stage: &str, log: AccessDecisionLog) -> RelatedAccessDecision {
-    RelatedAccessDecision {
+fn related_scope_evaluation(stage: &str, log: ScopeEvaluation) -> RelatedScopeEvaluation {
+    RelatedScopeEvaluation {
         stage: stage.to_string(),
         log,
     }
 }
 
-fn access_log(
-    subject: &AccessSubject,
-    scope: &str,
-    operation: &str,
-    content_level: &str,
-    resource: AccessResource,
-    policies: &[AccessPolicy],
-    generated_at: &str,
-    store_context: Option<&StoreContext>,
-) -> AccessDecisionLog {
-    evaluate_access(
-        AccessRequest {
-            subject: subject.clone(),
-            scope: scope.to_string(),
-            store_id: store_context.map(|context| context.store_id.clone()),
-            team_id: store_context.and_then(|context| context.team_id.clone()),
-            operation: operation.to_string(),
-            content_level: content_level.to_string(),
-            resource,
+struct RelatedScopeRequest<'a> {
+    subject: &'a ScopeSubject,
+    scope: &'a str,
+    operation: &'a str,
+    content_level: &'a str,
+    resource: ScopeResource,
+}
+
+struct RelatedScopeContext<'a> {
+    scope_rules: &'a [ScopeRule],
+    generated_at: &'a str,
+    store_context: Option<&'a StoreContext>,
+}
+
+fn evaluate_related_scope(
+    request: RelatedScopeRequest<'_>,
+    context: &RelatedScopeContext<'_>,
+) -> ScopeEvaluation {
+    evaluate_scope(
+        ScopeEvaluationRequest {
+            subject: request.subject.clone(),
+            scope: request.scope.to_string(),
+            store_id: context
+                .store_context
+                .map(|context| context.store_id.clone()),
+            team_id: context
+                .store_context
+                .and_then(|context| context.team_id.clone()),
+            operation: request.operation.to_string(),
+            content_level: request.content_level.to_string(),
+            resource: request.resource,
         },
-        policies,
-        AccessEvaluationContext {
-            decided_by: "llmwiki-related".to_string(),
-            decided_at: generated_at.to_string(),
+        context.scope_rules,
+        ScopeEvaluationContext {
+            evaluated_by: "llmwiki-related".to_string(),
+            evaluated_at: context.generated_at.to_string(),
         },
     )
 }
@@ -815,40 +839,46 @@ fn first_body_paragraph(body: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-fn load_access_policies(
+fn load_retrieval_scopes(
     root: &Path,
-    policy_paths: &[PathBuf],
-) -> Result<Vec<AccessPolicy>, RelatedError> {
-    let mut policies = Vec::new();
-    for path in policy_paths {
-        let policy_path = resolve_existing_path(root, path, "access policy")?;
-        let content = fs::read_to_string(&policy_path).map_err(|source| RelatedError::Io {
-            message: format!(
-                "cannot read access policy {}: {source}",
-                policy_path.display()
-            ),
-        })?;
-        policies.extend(parse_access_policies(&content, &policy_path)?);
+    retrieval_scope_paths: &[PathBuf],
+) -> Result<Vec<ScopeRule>, RelatedError> {
+    let mut scope_rules = Vec::new();
+    for path in retrieval_scope_paths {
+        let retrieval_scope_path = resolve_existing_path(root, path, "retrieval_scope")?;
+        let content =
+            fs::read_to_string(&retrieval_scope_path).map_err(|source| RelatedError::Io {
+                message: format!(
+                    "cannot read retrieval_scope {}: {source}",
+                    retrieval_scope_path.display()
+                ),
+            })?;
+        scope_rules.extend(parse_retrieval_scopes(&content, &retrieval_scope_path)?);
     }
-    Ok(policies)
+    Ok(scope_rules)
 }
 
-fn parse_access_policies(content: &str, path: &Path) -> Result<Vec<AccessPolicy>, RelatedError> {
+fn parse_retrieval_scopes(content: &str, path: &Path) -> Result<Vec<ScopeRule>, RelatedError> {
     let value: serde_yaml::Value =
         serde_yaml::from_str(content).map_err(|source| RelatedError::Parse {
-            message: format!("cannot parse access policy {}: {source}", path.display()),
+            message: format!("cannot parse retrieval_scope {}: {source}", path.display()),
         })?;
-    let policy_value = match value.as_mapping() {
-        Some(mapping) => mapping
-            .get(serde_yaml::Value::String("policy".to_string()))
-            .unwrap_or(&value),
-        None => &value,
+    let Some(mapping) = value.as_mapping() else {
+        return Err(RelatedError::Parse {
+            message: format!("retrieval_scope must be a YAML mapping: {}", path.display()),
+        });
     };
-    let policy: AccessPolicy =
-        serde_yaml::from_value(policy_value.clone()).map_err(|source| RelatedError::Parse {
-            message: format!("cannot decode access policy {}: {source}", path.display()),
+    let Some(scope_value) = mapping.get(serde_yaml::Value::String("retrieval_scope".to_string()))
+    else {
+        return Err(RelatedError::Parse {
+            message: format!("retrieval_scope root key is required: {}", path.display()),
+        });
+    };
+    let scope_rule: ScopeRule =
+        serde_yaml::from_value(scope_value.clone()).map_err(|source| RelatedError::Parse {
+            message: format!("cannot decode retrieval_scope {}: {source}", path.display()),
         })?;
-    Ok(vec![policy])
+    Ok(vec![scope_rule])
 }
 
 fn resolve_existing_path(root: &Path, input: &Path, label: &str) -> Result<PathBuf, RelatedError> {
@@ -1021,7 +1051,7 @@ fn hold_result(
     content_level: Option<String>,
     depth: usize,
     message: impl Into<String>,
-    decision_logs: Vec<AccessDecisionLog>,
+    scope_evaluations: Vec<ScopeEvaluation>,
 ) -> RelatedResult {
     status_result(
         generated_at,
@@ -1032,7 +1062,7 @@ fn hold_result(
         content_level,
         depth,
         message,
-        decision_logs,
+        scope_evaluations,
     )
 }
 
@@ -1045,7 +1075,7 @@ fn deny_result(
     content_level: &str,
     depth: usize,
     message: impl Into<String>,
-    decision_logs: Vec<AccessDecisionLog>,
+    scope_evaluations: Vec<ScopeEvaluation>,
 ) -> RelatedResult {
     status_result(
         generated_at,
@@ -1056,7 +1086,7 @@ fn deny_result(
         Some(content_level.to_string()),
         depth,
         message,
-        decision_logs,
+        scope_evaluations,
     )
 }
 
@@ -1070,7 +1100,7 @@ fn status_result(
     content_level: Option<String>,
     depth: usize,
     message: impl Into<String>,
-    decision_logs: Vec<AccessDecisionLog>,
+    scope_evaluations: Vec<ScopeEvaluation>,
 ) -> RelatedResult {
     RelatedResult {
         generated_at,
@@ -1082,7 +1112,7 @@ fn status_result(
         content_level,
         depth,
         results: Vec::new(),
-        decision_logs,
+        scope_evaluations,
     }
 }
 
@@ -1122,8 +1152,8 @@ mod tests {
         write_file(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: allow-related
+retrieval_scope:
+  rule_id: allow-related
   subject:
     kind: user
     id: alice
@@ -1133,15 +1163,15 @@ policy:
   resource:
     type: "*"
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow related
 "#,
         );
         write_file(
             dir.path().join("deny-b.yaml"),
             r#"
-policy:
-  policy_id: deny-b
+retrieval_scope:
+  rule_id: deny-b
   subject:
     kind: user
     id: alice
@@ -1151,7 +1181,7 @@ policy:
   resource:
     type: concept_document
     selector: docs/b.md
-  decision: deny
+  selection: exclude
   reason: deny intermediate
 "#,
         );
@@ -1164,7 +1194,7 @@ policy:
             content_level: Some("content".to_string()),
             subject_kind: Some("user".to_string()),
             subject_id: Some("alice".to_string()),
-            access_policy_paths: vec![PathBuf::from("policy.yaml"), PathBuf::from("deny-b.yaml")],
+            retrieval_scope_paths: vec![PathBuf::from("policy.yaml"), PathBuf::from("deny-b.yaml")],
             depth: Some(2),
             limit: Some(10),
             store_context: None,
@@ -1174,7 +1204,7 @@ policy:
         assert_eq!(result.status, "hold");
         assert!(result.results.is_empty());
         assert!(!result
-            .decision_logs
+            .scope_evaluations
             .iter()
             .any(|log| log.resource.contains("\"selector\":\"docs/b.md\"")));
     }

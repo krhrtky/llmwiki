@@ -24,13 +24,13 @@ LLMWiki は file-first の知識基盤 CLI です。`llmwiki` は JSON を正式
 - `docs/` は要求、ADR、仕様の SoT です。
 - `.llmwiki/` は生成物の置き場です。
 
-## Access Policy 最小例
+## Retrieval Scope 最小例
 
-`query` と `export` は `--access-policy` で YAML file を受け取ります。最小例は次の形です。
+`query` と `related` は `--retrieval-scope` で YAML file を受け取ります。最小例は次の形です。
 
 ```yaml
-policy:
-  policy_id: query-allow
+retrieval_scope:
+  rule_id: team-query
   subject:
     kind: user
     id: alice
@@ -40,13 +40,15 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
-  reason: allow query
+  selection: include
+  reason: include team content for query
 ```
 
 - `query` では `operation: query` を使います。
-- `export` では同じ形で `operation: export` に変えます。
+- `related` では同じ形で `operation: answer_suggestion` などに変えます。
 - `scope`、`content_level`、`subject.kind`、`subject.id` は CLI の指定と揃えます。
+
+`export` は同じ field を持つ `export_scope` YAML を `--export-scope` で受け取ります。
 
 ## Command Examples
 
@@ -54,24 +56,24 @@ policy:
 
 ```bash
 llmwiki ingest --workspace-root . --scope team docs/source.md
-llmwiki query --workspace-root . --question "What changed?" --scope team --content-level content --subject-kind user --subject-id alice --access-policy policy.yaml
-llmwiki related --workspace-root . --seed docs/procedure.md --scope team --operation answer_suggestion --content-level content --subject-kind user --subject-id alice --access-policy policy.yaml
-llmwiki file --workspace-root . --candidate drafts/query.md --scope team --owner alice --reviewer bob --confidence high --citation "docs/source.md#note" --access-policy-ref policy-1
+llmwiki query --workspace-root . --question "What changed?" --scope team --content-level content --subject-kind user --subject-id alice --retrieval-scope retrieval-scope.yaml
+llmwiki related --workspace-root . --scope team --operation answer_suggestion --content-level content --subject-kind user --subject-id alice --retrieval-scope retrieval-scope.yaml docs/procedure.md
+llmwiki file --workspace-root . --candidate drafts/query.md --scope team --owner alice --reviewer bob --confidence high --citation "docs/source.md#note"
 llmwiki graph --workspace-root .
 llmwiki redact --workspace-root . --target-scope team docs/source.md
 llmwiki propose --workspace-root . --from-scope personal --to-scope team --reviewer bob --approver carol --redaction-report .llmwiki/redactions/source.report.json drafts/page.md
-llmwiki export --workspace-root . --scope team --content-level content --subject-kind user --subject-id alice --access-policy policy.yaml
+llmwiki export --workspace-root . --scope team --content-level content --subject-kind user --subject-id alice --export-scope export-scope.yaml
 llmwiki lint --workspace-root .
 ```
 
 - `ingest` は raw source から candidate を作ります。
 - `query` は read-only で、filing は自動実行しません。
 - `related` は seed page から relation graph を辿る read-only operation です。
-- `file` は `--candidate`、`--scope`、`--owner`、`--confidence`、`--citation`、`--access-policy-ref` を最低限使います。
+- `file` は `--candidate`、`--scope`、`--owner`、`--confidence`、`--citation` を最低限使います。
 - `propose` は `--from-scope`、`--to-scope`、`--reviewer`、`--approver`、`--redaction-report` を使います。
 - `redact` は `--target-scope` を省略すると `hold` に倒れることがあります。
 - `graph` と `lint` は `paths` を省略すると workspace 全体を走査します。
-- `export` は `--scope` か page 側の scope 情報と `--access-policy` を使って出力を制御します。
+- `export` は `--scope` か page 側の scope 情報と `--export-scope` を使って出力対象を制御します。
 
 ### Demo Helper
 

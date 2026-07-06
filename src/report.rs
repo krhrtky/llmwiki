@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::access::AccessDecisionLog;
+use crate::access::ScopeEvaluation;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -96,7 +96,7 @@ pub struct RelatedResult {
     pub content_level: Option<String>,
     pub depth: usize,
     pub results: Vec<RelatedResultItem>,
-    pub decision_logs: Vec<AccessDecisionLog>,
+    pub scope_evaluations: Vec<ScopeEvaluation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -107,7 +107,7 @@ pub struct RelatedResultItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
     pub relation_paths: Vec<Vec<RelatedRelationStep>>,
-    pub access_decisions: Vec<RelatedAccessDecision>,
+    pub scope_evaluations: Vec<RelatedScopeEvaluation>,
     pub why: String,
 }
 
@@ -121,9 +121,9 @@ pub struct RelatedRelationStep {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RelatedAccessDecision {
+pub struct RelatedScopeEvaluation {
     pub stage: String,
-    pub log: AccessDecisionLog,
+    pub log: ScopeEvaluation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -141,7 +141,7 @@ pub struct QueryResult {
     pub citations: Vec<QueryCitation>,
     pub confidence: String,
     pub matched_pages: Vec<QueryCitation>,
-    pub decision_logs: Vec<AccessDecisionLog>,
+    pub scope_evaluations: Vec<ScopeEvaluation>,
     pub filing_candidate_metadata: FilingCandidateMetadata,
 }
 
@@ -166,7 +166,6 @@ pub struct FilingCandidateMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub risk_owner: Option<String>,
     pub lifecycle: String,
-    pub access_policy_refs: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subject_kind: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -383,7 +382,7 @@ pub struct ExportArtifact {
     pub manifest_path: String,
     pub artifact_path: String,
     pub files: Vec<ExportFile>,
-    pub decision_logs: Vec<AccessDecisionLog>,
+    pub scope_evaluations: Vec<ScopeEvaluation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

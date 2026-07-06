@@ -1,23 +1,23 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
-pub const DEFAULT_NO_MATCH_REASON: &str = "no matching policy; default hold";
+pub const DEFAULT_NO_MATCH_REASON: &str = "no matching scope rule; default hold";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AccessRequest {
-    pub subject: AccessSubject,
+pub struct ScopeEvaluationRequest {
+    pub subject: ScopeSubject,
     pub scope: String,
     pub store_id: Option<String>,
     pub team_id: Option<String>,
     pub operation: String,
     pub content_level: String,
-    pub resource: AccessResource,
+    pub resource: ScopeResource,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AccessPolicy {
-    pub policy_id: String,
-    pub subject: AccessSubject,
+pub struct ScopeRule {
+    pub rule_id: String,
+    pub subject: ScopeSubject,
     pub scope: String,
     #[serde(default)]
     pub store_id: Option<String>,
@@ -25,21 +25,21 @@ pub struct AccessPolicy {
     pub team_id: Option<String>,
     pub operation: String,
     pub content_level: String,
-    pub resource: AccessResource,
-    pub decision: AccessDecision,
+    pub resource: ScopeResource,
+    pub selection: ScopeSelection,
     pub reason: String,
     #[serde(default)]
-    pub conditions: AccessConditions,
+    pub conditions: ScopeConditions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AccessEvaluationContext {
-    pub decided_by: String,
-    pub decided_at: String,
+pub struct ScopeEvaluationContext {
+    pub evaluated_by: String,
+    pub evaluated_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AccessDecisionLog {
+pub struct ScopeEvaluation {
     pub subject: String,
     pub operation: String,
     pub content_level: String,
@@ -48,36 +48,36 @@ pub struct AccessDecisionLog {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub team_id: Option<String>,
     pub resource: String,
-    pub decision: AccessDecision,
-    pub policy_ids: Vec<String>,
-    pub decided_by: String,
-    pub decided_at: String,
+    pub selection: ScopeSelection,
+    pub rule_ids: Vec<String>,
+    pub evaluated_by: String,
+    pub evaluated_at: String,
     pub reason: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum AccessDecision {
-    Allow,
-    Deny,
+pub enum ScopeSelection {
+    Include,
+    Exclude,
     Hold,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AccessSubject {
+pub struct ScopeSubject {
     pub kind: String,
     pub id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AccessResource {
+pub struct ScopeResource {
     #[serde(rename = "type")]
     pub type_: String,
     pub selector: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct AccessConditions {
+pub struct ScopeConditions {
     #[serde(default)]
     pub require_human_review: bool,
     #[serde(default)]
@@ -89,8 +89,8 @@ pub struct AccessConditions {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct MatchedPolicy<'a> {
-    policy: &'a AccessPolicy,
+struct MatchedScopeRule<'a> {
+    scope_rule: &'a ScopeRule,
     specificity: Specificity,
     index: usize,
 }
@@ -99,34 +99,34 @@ struct MatchedPolicy<'a> {
 struct Specificity([u8; 9]);
 
 impl Specificity {
-    fn from_policy(request: &AccessRequest, policy: &AccessPolicy) -> Self {
+    fn from_scope_rule(request: &ScopeEvaluationRequest, scope_rule: &ScopeRule) -> Self {
         Self([
-            exact_match(&policy.resource.selector, &request.resource.selector) as u8,
-            exact_match(&policy.resource.type_, &request.resource.type_) as u8,
-            exact_optional_match(&policy.store_id, &request.store_id) as u8,
-            exact_optional_match(&policy.team_id, &request.team_id) as u8,
-            exact_match(&policy.operation, &request.operation) as u8,
-            exact_match(&policy.content_level, &request.content_level) as u8,
-            exact_match(&policy.scope, &request.scope) as u8,
-            exact_match(&policy.subject.id, &request.subject.id) as u8,
-            exact_match(&policy.subject.kind, &request.subject.kind) as u8,
+            exact_match(&scope_rule.resource.selector, &request.resource.selector) as u8,
+            exact_match(&scope_rule.resource.type_, &request.resource.type_) as u8,
+            exact_optional_match(&scope_rule.store_id, &request.store_id) as u8,
+            exact_optional_match(&scope_rule.team_id, &request.team_id) as u8,
+            exact_match(&scope_rule.operation, &request.operation) as u8,
+            exact_match(&scope_rule.content_level, &request.content_level) as u8,
+            exact_match(&scope_rule.scope, &request.scope) as u8,
+            exact_match(&scope_rule.subject.id, &request.subject.id) as u8,
+            exact_match(&scope_rule.subject.kind, &request.subject.kind) as u8,
         ])
     }
 }
 
-pub fn evaluate_access(
-    request: AccessRequest,
-    policies: &[AccessPolicy],
-    context: AccessEvaluationContext,
-) -> AccessDecisionLog {
-    let mut matched: Vec<MatchedPolicy<'_>> = policies
+pub fn evaluate_scope(
+    request: ScopeEvaluationRequest,
+    scope_rules: &[ScopeRule],
+    context: ScopeEvaluationContext,
+) -> ScopeEvaluation {
+    let mut matched: Vec<MatchedScopeRule<'_>> = scope_rules
         .iter()
         .enumerate()
-        .filter_map(|(index, policy)| {
-            if policy_matches(&request, policy) {
-                Some(MatchedPolicy {
-                    policy,
-                    specificity: Specificity::from_policy(&request, policy),
+        .filter_map(|(index, scope_rule)| {
+            if scope_rule_matches(&request, scope_rule) {
+                Some(MatchedScopeRule {
+                    scope_rule,
+                    specificity: Specificity::from_scope_rule(&request, scope_rule),
                     index,
                 })
             } else {
@@ -135,74 +135,77 @@ pub fn evaluate_access(
         })
         .collect();
 
-    let decision = final_decision(&matched);
-    matched.retain(|candidate| candidate.policy.decision == decision);
-    matched.sort_by(compare_matched_policy);
+    let selection = final_selection(&matched);
+    matched.retain(|candidate| candidate.scope_rule.selection == selection);
+    matched.sort_by(compare_matched_scope_rule);
 
-    let policy_ids = matched
+    let rule_ids = matched
         .iter()
-        .map(|candidate| candidate.policy.policy_id.clone())
+        .map(|candidate| candidate.scope_rule.rule_id.clone())
         .collect::<Vec<_>>();
 
     let reason = matched
         .first()
-        .map(|candidate| candidate.policy.reason.clone())
+        .map(|candidate| candidate.scope_rule.reason.clone())
         .unwrap_or_else(|| DEFAULT_NO_MATCH_REASON.to_string());
 
-    AccessDecisionLog {
+    ScopeEvaluation {
         subject: serialize_audit_subject(&request.subject),
         operation: request.operation,
         content_level: request.content_level,
         store_id: request.store_id,
         team_id: request.team_id,
         resource: serialize_audit_resource(&request.resource),
-        decision,
-        policy_ids,
-        decided_by: context.decided_by,
-        decided_at: context.decided_at,
+        selection,
+        rule_ids,
+        evaluated_by: context.evaluated_by,
+        evaluated_at: context.evaluated_at,
         reason,
     }
 }
 
-fn final_decision(matched: &[MatchedPolicy<'_>]) -> AccessDecision {
+fn final_selection(matched: &[MatchedScopeRule<'_>]) -> ScopeSelection {
     if matched
         .iter()
-        .any(|candidate| candidate.policy.decision == AccessDecision::Deny)
+        .any(|candidate| candidate.scope_rule.selection == ScopeSelection::Exclude)
     {
-        AccessDecision::Deny
+        ScopeSelection::Exclude
     } else if matched
         .iter()
-        .any(|candidate| candidate.policy.decision == AccessDecision::Hold)
+        .any(|candidate| candidate.scope_rule.selection == ScopeSelection::Hold)
     {
-        AccessDecision::Hold
+        ScopeSelection::Hold
     } else if matched
         .iter()
-        .any(|candidate| candidate.policy.decision == AccessDecision::Allow)
+        .any(|candidate| candidate.scope_rule.selection == ScopeSelection::Include)
     {
-        AccessDecision::Allow
+        ScopeSelection::Include
     } else {
-        AccessDecision::Hold
+        ScopeSelection::Hold
     }
 }
 
-fn compare_matched_policy(left: &MatchedPolicy<'_>, right: &MatchedPolicy<'_>) -> Ordering {
+fn compare_matched_scope_rule(
+    left: &MatchedScopeRule<'_>,
+    right: &MatchedScopeRule<'_>,
+) -> Ordering {
     right
         .specificity
         .cmp(&left.specificity)
-        .then_with(|| left.policy.policy_id.cmp(&right.policy.policy_id))
+        .then_with(|| left.scope_rule.rule_id.cmp(&right.scope_rule.rule_id))
         .then_with(|| left.index.cmp(&right.index))
 }
 
-fn policy_matches(request: &AccessRequest, policy: &AccessPolicy) -> bool {
-    matches_field(&policy.subject.kind, &request.subject.kind)
-        && matches_field(&policy.subject.id, &request.subject.id)
-        && matches_field(&policy.scope, &request.scope)
-        && matches_optional_field(&policy.store_id, &request.store_id)
-        && matches_optional_field(&policy.team_id, &request.team_id)
-        && matches_field(&policy.operation, &request.operation)
-        && matches_field(&policy.content_level, &request.content_level)
-        && matches_field(&policy.resource.type_, &request.resource.type_)
-        && matches_field(&policy.resource.selector, &request.resource.selector)
+fn scope_rule_matches(request: &ScopeEvaluationRequest, scope_rule: &ScopeRule) -> bool {
+    matches_field(&scope_rule.subject.kind, &request.subject.kind)
+        && matches_field(&scope_rule.subject.id, &request.subject.id)
+        && matches_field(&scope_rule.scope, &request.scope)
+        && matches_optional_field(&scope_rule.store_id, &request.store_id)
+        && matches_optional_field(&scope_rule.team_id, &request.team_id)
+        && matches_field(&scope_rule.operation, &request.operation)
+        && matches_field(&scope_rule.content_level, &request.content_level)
+        && matches_field(&scope_rule.resource.type_, &request.resource.type_)
+        && matches_field(&scope_rule.resource.selector, &request.resource.selector)
 }
 
 fn matches_field(policy_value: &str, request_value: &str) -> bool {
@@ -229,7 +232,7 @@ fn exact_optional_match(policy_value: &Option<String>, request_value: &Option<St
     }
 }
 
-fn serialize_audit_subject(subject: &AccessSubject) -> String {
+fn serialize_audit_subject(subject: &ScopeSubject) -> String {
     serde_json::to_string(subject).unwrap_or_else(|_| {
         format!(
             "{{\"kind\":\"{}\",\"id\":\"{}\"}}",
@@ -238,7 +241,7 @@ fn serialize_audit_subject(subject: &AccessSubject) -> String {
     })
 }
 
-fn serialize_audit_resource(resource: &AccessResource) -> String {
+fn serialize_audit_resource(resource: &ScopeResource) -> String {
     serde_json::to_string(resource).unwrap_or_else(|_| {
         format!(
             "{{\"type\":\"{}\",\"selector\":\"{}\"}}",
@@ -252,13 +255,13 @@ mod tests {
     use super::*;
 
     fn request(
-        subject: AccessSubject,
+        subject: ScopeSubject,
         scope: &str,
         operation: &str,
         content_level: &str,
-        resource: AccessResource,
-    ) -> AccessRequest {
-        AccessRequest {
+        resource: ScopeResource,
+    ) -> ScopeEvaluationRequest {
+        ScopeEvaluationRequest {
             subject,
             scope: scope.to_string(),
             store_id: None,
@@ -269,10 +272,10 @@ mod tests {
         }
     }
 
-    fn policy(id: &str, decision: AccessDecision, reason: &str) -> AccessPolicy {
-        AccessPolicy {
-            policy_id: id.to_string(),
-            subject: AccessSubject {
+    fn scope_rule(id: &str, selection: ScopeSelection, reason: &str) -> ScopeRule {
+        ScopeRule {
+            rule_id: id.to_string(),
+            subject: ScopeSubject {
                 kind: "*".to_string(),
                 id: "*".to_string(),
             },
@@ -281,39 +284,39 @@ mod tests {
             team_id: None,
             operation: "*".to_string(),
             content_level: "*".to_string(),
-            resource: AccessResource {
+            resource: ScopeResource {
                 type_: "*".to_string(),
                 selector: "*".to_string(),
             },
-            decision,
+            selection,
             reason: reason.to_string(),
-            conditions: AccessConditions::default(),
+            conditions: ScopeConditions::default(),
         }
     }
 
-    fn subject(kind: &str, id: &str) -> AccessSubject {
-        AccessSubject {
+    fn subject(kind: &str, id: &str) -> ScopeSubject {
+        ScopeSubject {
             kind: kind.to_string(),
             id: id.to_string(),
         }
     }
 
-    fn resource(type_: &str, selector: &str) -> AccessResource {
-        AccessResource {
+    fn resource(type_: &str, selector: &str) -> ScopeResource {
+        ScopeResource {
             type_: type_.to_string(),
             selector: selector.to_string(),
         }
     }
 
-    fn context(decided_by: &str, decided_at: &str) -> AccessEvaluationContext {
-        AccessEvaluationContext {
-            decided_by: decided_by.to_string(),
-            decided_at: decided_at.to_string(),
+    fn context(evaluated_by: &str, evaluated_at: &str) -> ScopeEvaluationContext {
+        ScopeEvaluationContext {
+            evaluated_by: evaluated_by.to_string(),
+            evaluated_at: evaluated_at.to_string(),
         }
     }
 
     #[test]
-    fn no_matching_policy_defaults_to_hold() {
+    fn no_matching_scope_rule_defaults_to_hold() {
         let request = request(
             subject("user", "alice"),
             "team",
@@ -322,17 +325,17 @@ mod tests {
             resource("concept_document", "doc-1"),
         );
 
-        let log = evaluate_access(request, &[], context("query", "2026-07-05T00:00:00Z"));
+        let log = evaluate_scope(request, &[], context("query", "2026-07-05T00:00:00Z"));
 
-        assert_eq!(log.decision, AccessDecision::Hold);
-        assert!(log.policy_ids.is_empty());
-        assert_eq!(log.decided_by, "query");
-        assert_eq!(log.decided_at, "2026-07-05T00:00:00Z");
+        assert_eq!(log.selection, ScopeSelection::Hold);
+        assert!(log.rule_ids.is_empty());
+        assert_eq!(log.evaluated_by, "query");
+        assert_eq!(log.evaluated_at, "2026-07-05T00:00:00Z");
         assert_eq!(log.reason, DEFAULT_NO_MATCH_REASON);
     }
 
     #[test]
-    fn allow_only_returns_allow() {
+    fn include_only_returns_include() {
         let request = request(
             subject("user", "alice"),
             "team",
@@ -340,30 +343,30 @@ mod tests {
             "summary",
             resource("concept_document", "doc-1"),
         );
-        let policies = vec![AccessPolicy {
+        let scope_rules = vec![ScopeRule {
             operation: "query".to_string(),
             content_level: "summary".to_string(),
             scope: "team".to_string(),
             subject: subject("user", "alice"),
             resource: resource("concept_document", "doc-1"),
-            ..policy("allow-1", AccessDecision::Allow, "allow reason")
+            ..scope_rule("allow-1", ScopeSelection::Include, "allow reason")
         }];
 
-        let log = evaluate_access(
+        let log = evaluate_scope(
             request,
-            &policies,
+            &scope_rules,
             context("llmwiki-cli", "2026-07-05T00:00:01Z"),
         );
 
-        assert_eq!(log.decision, AccessDecision::Allow);
-        assert_eq!(log.policy_ids, vec!["allow-1".to_string()]);
-        assert_eq!(log.decided_by, "llmwiki-cli");
-        assert_eq!(log.decided_at, "2026-07-05T00:00:01Z");
+        assert_eq!(log.selection, ScopeSelection::Include);
+        assert_eq!(log.rule_ids, vec!["allow-1".to_string()]);
+        assert_eq!(log.evaluated_by, "llmwiki-cli");
+        assert_eq!(log.evaluated_at, "2026-07-05T00:00:01Z");
         assert_eq!(log.reason, "allow reason");
     }
 
     #[test]
-    fn hold_beats_allow_even_if_allow_is_more_specific() {
+    fn hold_beats_include_even_if_include_is_more_specific() {
         let request = request(
             subject("user", "alice"),
             "team",
@@ -371,36 +374,40 @@ mod tests {
             "summary",
             resource("concept_document", "doc-1"),
         );
-        let policies = vec![
-            AccessPolicy {
+        let scope_rules = vec![
+            ScopeRule {
                 subject: subject("user", "alice"),
                 scope: "team".to_string(),
                 operation: "query".to_string(),
                 content_level: "summary".to_string(),
                 resource: resource("concept_document", "doc-1"),
-                ..policy("allow-specific", AccessDecision::Allow, "allow reason")
+                ..scope_rule("include-specific", ScopeSelection::Include, "allow reason")
             },
-            AccessPolicy {
+            ScopeRule {
                 subject: subject("*", "*"),
                 scope: "*".to_string(),
                 operation: "query".to_string(),
                 content_level: "*".to_string(),
                 resource: resource("*", "*"),
-                ..policy("hold-broader", AccessDecision::Hold, "hold reason")
+                ..scope_rule("hold-broader", ScopeSelection::Hold, "hold reason")
             },
         ];
 
-        let log = evaluate_access(request, &policies, context("query", "2026-07-05T00:00:02Z"));
+        let log = evaluate_scope(
+            request,
+            &scope_rules,
+            context("query", "2026-07-05T00:00:02Z"),
+        );
 
-        assert_eq!(log.decision, AccessDecision::Hold);
-        assert_eq!(log.policy_ids, vec!["hold-broader".to_string()]);
-        assert_eq!(log.decided_by, "query");
-        assert_eq!(log.decided_at, "2026-07-05T00:00:02Z");
+        assert_eq!(log.selection, ScopeSelection::Hold);
+        assert_eq!(log.rule_ids, vec!["hold-broader".to_string()]);
+        assert_eq!(log.evaluated_by, "query");
+        assert_eq!(log.evaluated_at, "2026-07-05T00:00:02Z");
         assert_eq!(log.reason, "hold reason");
     }
 
     #[test]
-    fn deny_beats_hold_and_allow_even_if_deny_is_less_specific() {
+    fn exclude_beats_hold_and_include_even_if_exclude_is_less_specific() {
         let request = request(
             subject("user", "alice"),
             "team",
@@ -408,44 +415,48 @@ mod tests {
             "summary",
             resource("concept_document", "doc-1"),
         );
-        let policies = vec![
-            AccessPolicy {
+        let scope_rules = vec![
+            ScopeRule {
                 subject: subject("*", "*"),
                 scope: "*".to_string(),
                 operation: "query".to_string(),
                 content_level: "summary".to_string(),
                 resource: resource("*", "*"),
-                ..policy("allow-specific", AccessDecision::Allow, "allow reason")
+                ..scope_rule("include-specific", ScopeSelection::Include, "allow reason")
             },
-            AccessPolicy {
+            ScopeRule {
                 subject: subject("*", "*"),
                 scope: "team".to_string(),
                 operation: "query".to_string(),
                 content_level: "summary".to_string(),
                 resource: resource("concept_document", "*"),
-                ..policy("hold-specific", AccessDecision::Hold, "hold reason")
+                ..scope_rule("hold-specific", ScopeSelection::Hold, "hold reason")
             },
-            AccessPolicy {
+            ScopeRule {
                 subject: subject("*", "*"),
                 scope: "*".to_string(),
                 operation: "*".to_string(),
                 content_level: "*".to_string(),
                 resource: resource("*", "*"),
-                ..policy("deny-broad", AccessDecision::Deny, "deny reason")
+                ..scope_rule("exclude-broad", ScopeSelection::Exclude, "deny reason")
             },
         ];
 
-        let log = evaluate_access(request, &policies, context("query", "2026-07-05T00:00:03Z"));
+        let log = evaluate_scope(
+            request,
+            &scope_rules,
+            context("query", "2026-07-05T00:00:03Z"),
+        );
 
-        assert_eq!(log.decision, AccessDecision::Deny);
-        assert_eq!(log.policy_ids, vec!["deny-broad".to_string()]);
-        assert_eq!(log.decided_by, "query");
-        assert_eq!(log.decided_at, "2026-07-05T00:00:03Z");
+        assert_eq!(log.selection, ScopeSelection::Exclude);
+        assert_eq!(log.rule_ids, vec!["exclude-broad".to_string()]);
+        assert_eq!(log.evaluated_by, "query");
+        assert_eq!(log.evaluated_at, "2026-07-05T00:00:03Z");
         assert_eq!(log.reason, "deny reason");
     }
 
     #[test]
-    fn specificity_chooses_reason_among_same_decision_policies() {
+    fn specificity_chooses_reason_among_same_selection_rules() {
         let request = request(
             subject("user", "alice"),
             "team",
@@ -453,34 +464,38 @@ mod tests {
             "summary",
             resource("concept_document", "doc-1"),
         );
-        let policies = vec![
-            AccessPolicy {
+        let scope_rules = vec![
+            ScopeRule {
                 subject: subject("*", "*"),
                 scope: "*".to_string(),
                 operation: "query".to_string(),
                 content_level: "summary".to_string(),
                 resource: resource("concept_document", "*"),
-                ..policy("p-low", AccessDecision::Allow, "low specificity")
+                ..scope_rule("p-low", ScopeSelection::Include, "low specificity")
             },
-            AccessPolicy {
+            ScopeRule {
                 subject: subject("*", "*"),
                 scope: "team".to_string(),
                 operation: "query".to_string(),
                 content_level: "summary".to_string(),
                 resource: resource("concept_document", "doc-1"),
-                ..policy("p-high", AccessDecision::Allow, "high specificity")
+                ..scope_rule("p-high", ScopeSelection::Include, "high specificity")
             },
         ];
 
-        let log = evaluate_access(request, &policies, context("query", "2026-07-05T00:00:04Z"));
+        let log = evaluate_scope(
+            request,
+            &scope_rules,
+            context("query", "2026-07-05T00:00:04Z"),
+        );
 
-        assert_eq!(log.decision, AccessDecision::Allow);
+        assert_eq!(log.selection, ScopeSelection::Include);
         assert_eq!(
-            log.policy_ids,
+            log.rule_ids,
             vec!["p-high".to_string(), "p-low".to_string()]
         );
-        assert_eq!(log.decided_by, "query");
-        assert_eq!(log.decided_at, "2026-07-05T00:00:04Z");
+        assert_eq!(log.evaluated_by, "query");
+        assert_eq!(log.evaluated_at, "2026-07-05T00:00:04Z");
         assert_eq!(log.reason, "high specificity");
     }
 
@@ -493,25 +508,29 @@ mod tests {
             "summary",
             resource("concept_document", "doc-1"),
         );
-        let policies = vec![AccessPolicy {
+        let scope_rules = vec![ScopeRule {
             subject: subject("*", "*"),
             scope: "*".to_string(),
             operation: "*".to_string(),
             content_level: "*".to_string(),
             resource: resource("*", "*"),
-            ..policy("wildcard", AccessDecision::Allow, "wildcard allow")
+            ..scope_rule("wildcard", ScopeSelection::Include, "wildcard allow")
         }];
 
-        let log = evaluate_access(request, &policies, context("query", "2026-07-05T00:00:05Z"));
+        let log = evaluate_scope(
+            request,
+            &scope_rules,
+            context("query", "2026-07-05T00:00:05Z"),
+        );
 
-        assert_eq!(log.decision, AccessDecision::Allow);
-        assert_eq!(log.policy_ids, vec!["wildcard".to_string()]);
-        assert_eq!(log.decided_by, "query");
-        assert_eq!(log.decided_at, "2026-07-05T00:00:05Z");
+        assert_eq!(log.selection, ScopeSelection::Include);
+        assert_eq!(log.rule_ids, vec!["wildcard".to_string()]);
+        assert_eq!(log.evaluated_by, "query");
+        assert_eq!(log.evaluated_at, "2026-07-05T00:00:05Z");
     }
 
     #[test]
-    fn nonmatching_field_excludes_policy() {
+    fn nonmatching_field_excludes_scope_rule() {
         let request = request(
             subject("user", "alice"),
             "team",
@@ -519,17 +538,21 @@ mod tests {
             "summary",
             resource("concept_document", "doc-1"),
         );
-        let policies = vec![AccessPolicy {
+        let scope_rules = vec![ScopeRule {
             scope: "org".to_string(),
-            ..policy("mismatch", AccessDecision::Allow, "should not match")
+            ..scope_rule("mismatch", ScopeSelection::Include, "should not match")
         }];
 
-        let log = evaluate_access(request, &policies, context("query", "2026-07-05T00:00:06Z"));
+        let log = evaluate_scope(
+            request,
+            &scope_rules,
+            context("query", "2026-07-05T00:00:06Z"),
+        );
 
-        assert_eq!(log.decision, AccessDecision::Hold);
-        assert!(log.policy_ids.is_empty());
-        assert_eq!(log.decided_by, "query");
-        assert_eq!(log.decided_at, "2026-07-05T00:00:06Z");
+        assert_eq!(log.selection, ScopeSelection::Hold);
+        assert!(log.rule_ids.is_empty());
+        assert_eq!(log.evaluated_by, "query");
+        assert_eq!(log.evaluated_at, "2026-07-05T00:00:06Z");
     }
 
     #[test]
@@ -541,44 +564,48 @@ mod tests {
             "summary",
             resource("concept_document", "doc-1"),
         );
-        let policies = vec![
-            AccessPolicy {
-                policy_id: "b-policy".to_string(),
+        let scope_rules = vec![
+            ScopeRule {
+                rule_id: "b-rule".to_string(),
                 subject: subject("*", "*"),
                 scope: "team".to_string(),
                 operation: "query".to_string(),
                 content_level: "summary".to_string(),
                 resource: resource("concept_document", "doc-1"),
-                decision: AccessDecision::Allow,
+                selection: ScopeSelection::Include,
                 reason: "b".to_string(),
                 store_id: None,
                 team_id: None,
-                conditions: AccessConditions::default(),
+                conditions: ScopeConditions::default(),
             },
-            AccessPolicy {
-                policy_id: "a-policy".to_string(),
+            ScopeRule {
+                rule_id: "a-rule".to_string(),
                 subject: subject("*", "*"),
                 scope: "team".to_string(),
                 operation: "query".to_string(),
                 content_level: "summary".to_string(),
                 resource: resource("concept_document", "doc-1"),
-                decision: AccessDecision::Allow,
+                selection: ScopeSelection::Include,
                 reason: "a".to_string(),
                 store_id: None,
                 team_id: None,
-                conditions: AccessConditions::default(),
+                conditions: ScopeConditions::default(),
             },
         ];
 
-        let log = evaluate_access(request, &policies, context("query", "2026-07-05T00:00:07Z"));
+        let log = evaluate_scope(
+            request,
+            &scope_rules,
+            context("query", "2026-07-05T00:00:07Z"),
+        );
 
         assert_eq!(
-            log.policy_ids,
-            vec!["a-policy".to_string(), "b-policy".to_string()]
+            log.rule_ids,
+            vec!["a-rule".to_string(), "b-rule".to_string()]
         );
         assert_eq!(log.reason, "a");
-        assert_eq!(log.decided_by, "query");
-        assert_eq!(log.decided_at, "2026-07-05T00:00:07Z");
+        assert_eq!(log.evaluated_by, "query");
+        assert_eq!(log.evaluated_at, "2026-07-05T00:00:07Z");
     }
 
     #[test]
@@ -590,29 +617,29 @@ mod tests {
             "content",
             resource("workflow_state", "proposal-1"),
         );
-        let policies = vec![AccessPolicy {
+        let scope_rules = vec![ScopeRule {
             subject: subject("role", "team_owner"),
             scope: "team".to_string(),
             operation: "publish".to_string(),
             content_level: "content".to_string(),
             resource: resource("workflow_state", "*"),
-            ..policy("role-allow", AccessDecision::Allow, "team owner")
+            ..scope_rule("role-allow", ScopeSelection::Include, "team owner")
         }];
 
-        let log = evaluate_access(
+        let log = evaluate_scope(
             request,
-            &policies,
+            &scope_rules,
             context("llmwiki-cli", "2026-07-05T00:00:08Z"),
         );
 
-        assert_eq!(log.decision, AccessDecision::Allow);
-        assert_eq!(log.policy_ids, vec!["role-allow".to_string()]);
-        assert_eq!(log.decided_by, "llmwiki-cli");
-        assert_eq!(log.decided_at, "2026-07-05T00:00:08Z");
+        assert_eq!(log.selection, ScopeSelection::Include);
+        assert_eq!(log.rule_ids, vec!["role-allow".to_string()]);
+        assert_eq!(log.evaluated_by, "llmwiki-cli");
+        assert_eq!(log.evaluated_at, "2026-07-05T00:00:08Z");
     }
 
     #[test]
-    fn team_id_policy_does_not_match_another_team_store() {
+    fn team_id_scope_rule_does_not_match_another_team_store() {
         let mut request = request(
             subject("user", "alice"),
             "team",
@@ -623,28 +650,32 @@ mod tests {
         request.store_id = Some("team:payments".to_string());
         request.team_id = Some("payments".to_string());
 
-        let policies = vec![AccessPolicy {
+        let scope_rules = vec![ScopeRule {
             scope: "team".to_string(),
             store_id: Some("team:platform".to_string()),
             team_id: Some("platform".to_string()),
             operation: "query".to_string(),
             content_level: "content".to_string(),
             resource: resource("concept_document", "*"),
-            ..policy("platform-query", AccessDecision::Allow, "platform only")
+            ..scope_rule("platform-query", ScopeSelection::Include, "platform only")
         }];
 
-        let log = evaluate_access(request, &policies, context("query", "2026-07-05T00:00:09Z"));
+        let log = evaluate_scope(
+            request,
+            &scope_rules,
+            context("query", "2026-07-05T00:00:09Z"),
+        );
 
-        assert_eq!(log.decision, AccessDecision::Hold);
-        assert!(log.policy_ids.is_empty());
+        assert_eq!(log.selection, ScopeSelection::Hold);
+        assert!(log.rule_ids.is_empty());
         assert_eq!(log.store_id, Some("team:payments".to_string()));
         assert_eq!(log.team_id, Some("payments".to_string()));
     }
 
     #[test]
-    fn serde_roundtrip_preserves_policy_and_decision_log_shape() {
-        let policy = AccessPolicy {
-            policy_id: "policy-1".to_string(),
+    fn serde_roundtrip_preserves_scope_rule_and_scope_evaluation_shape() {
+        let scope_rule = ScopeRule {
+            rule_id: "rule-1".to_string(),
             subject: subject("role", "team_owner"),
             scope: "team".to_string(),
             store_id: None,
@@ -652,42 +683,43 @@ mod tests {
             operation: "query".to_string(),
             content_level: "summary".to_string(),
             resource: resource("concept_document", "doc-1"),
-            decision: AccessDecision::Allow,
+            selection: ScopeSelection::Include,
             reason: "team query".to_string(),
-            conditions: AccessConditions {
+            conditions: ScopeConditions {
                 require_human_review: true,
                 require_redaction_gate: false,
                 require_owner: true,
                 require_reviewer: false,
             },
         };
-        let yaml = serde_yaml::to_string(&policy).expect("policy to serialize");
-        let decoded_policy: AccessPolicy =
-            serde_yaml::from_str(&yaml).expect("policy to deserialize");
-        assert_eq!(decoded_policy, policy);
-        assert!(yaml.contains("policy_id: policy-1"));
+        let yaml = serde_yaml::to_string(&scope_rule).expect("scope_rule to serialize");
+        let decoded_scope_rule: ScopeRule =
+            serde_yaml::from_str(&yaml).expect("scope_rule to deserialize");
+        assert_eq!(decoded_scope_rule, scope_rule);
+        assert!(yaml.contains("rule_id: rule-1"));
+        assert!(yaml.contains("selection: include"));
         assert!(yaml.contains("kind: role"));
         assert!(yaml.contains("type: concept_document"));
 
-        let log = AccessDecisionLog {
-            subject: serde_json::to_string(&policy.subject).expect("subject json"),
-            operation: policy.operation.clone(),
-            content_level: policy.content_level.clone(),
+        let log = ScopeEvaluation {
+            subject: serde_json::to_string(&scope_rule.subject).expect("subject json"),
+            operation: scope_rule.operation.clone(),
+            content_level: scope_rule.content_level.clone(),
             store_id: None,
             team_id: None,
-            resource: serde_json::to_string(&policy.resource).expect("resource json"),
-            decision: AccessDecision::Allow,
-            policy_ids: vec![policy.policy_id.clone()],
-            decided_by: "llmwiki-cli".to_string(),
-            decided_at: "2026-07-05T00:00:09Z".to_string(),
-            reason: policy.reason.clone(),
+            resource: serde_json::to_string(&scope_rule.resource).expect("resource json"),
+            selection: ScopeSelection::Include,
+            rule_ids: vec![scope_rule.rule_id.clone()],
+            evaluated_by: "llmwiki-cli".to_string(),
+            evaluated_at: "2026-07-05T00:00:09Z".to_string(),
+            reason: scope_rule.reason.clone(),
         };
         let json = serde_json::to_string(&log).expect("log to serialize");
-        let decoded_log: AccessDecisionLog =
-            serde_json::from_str(&json).expect("log to deserialize");
+        let decoded_log: ScopeEvaluation = serde_json::from_str(&json).expect("log to deserialize");
         assert_eq!(decoded_log, log);
-        assert_eq!(decoded_log.decided_by, "llmwiki-cli");
-        assert!(json.contains("\"policy_ids\":[\"policy-1\"]"));
+        assert_eq!(decoded_log.evaluated_by, "llmwiki-cli");
+        assert!(json.contains("\"rule_ids\":[\"rule-1\"]"));
+        assert!(json.contains("\"selection\":\"include\""));
         assert!(json.contains("\\\"kind\\\":\\\"role\\\""));
     }
 }

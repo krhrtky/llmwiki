@@ -94,8 +94,8 @@ fn normalize_key(key: &str, value: &mut Value) -> bool {
             *value = Value::String("<export_path>".to_string());
             true
         }
-        "decided_at" => {
-            *value = Value::String("<decided_at>".to_string());
+        "evaluated_at" => {
+            *value = Value::String("<evaluated_at>".to_string());
             true
         }
         "redaction_report_ref" => {
@@ -135,23 +135,23 @@ fn remove_object_field(value: &mut Value, envelope: &str, field: &str) -> Value 
         .unwrap_or_else(|| panic!("{envelope}.{field} must be present"))
 }
 
-fn assert_decision_logs(
+fn assert_scope_evaluations(
     logs: &Value,
     operation: &str,
-    decided_by: &str,
-    policy_id: &str,
+    evaluated_by: &str,
+    rule_id: &str,
     selectors: &[&str],
 ) {
-    let logs = logs.as_array().expect("decision_logs must be an array");
+    let logs = logs.as_array().expect("scope_evaluations must be an array");
     assert_eq!(logs.len(), selectors.len());
 
     for (log, selector) in logs.iter().zip(selectors) {
         assert_eq!(log["operation"], operation);
         assert_eq!(log["content_level"], "content");
-        assert_eq!(log["decision"], "allow");
-        assert_eq!(log["policy_ids"], json!([policy_id]));
-        assert_eq!(log["decided_by"], decided_by);
-        assert_eq!(log["decided_at"], "<decided_at>");
+        assert_eq!(log["selection"], "include");
+        assert_eq!(log["rule_ids"], json!([rule_id]));
+        assert_eq!(log["evaluated_by"], evaluated_by);
+        assert_eq!(log["evaluated_at"], "<evaluated_at>");
 
         let subject: Value =
             serde_json::from_str(log["subject"].as_str().expect("subject must be JSON")).unwrap();
@@ -346,7 +346,7 @@ fn query_cli_returns_query_result_golden() {
     );
     write_file(
         root.path().join("query-policy.yaml"),
-        "policy:\n  policy_id: query-allow\n  subject:\n    kind: user\n    id: alice\n  scope: team\n  operation: query\n  content_level: content\n  resource:\n    type: concept_document\n    selector: \"*\"\n  decision: allow\n  reason: allow query\n",
+        "retrieval_scope:\n  rule_id: query-allow\n  subject:\n    kind: user\n    id: alice\n  scope: team\n  operation: query\n  content_level: content\n  resource:\n    type: concept_document\n    selector: \"*\"\n  selection: include\n  reason: allow query\n",
     );
 
     let mut actual = run_and_normalize(&[
@@ -363,10 +363,10 @@ fn query_cli_returns_query_result_golden() {
         "user",
         "--subject-id",
         "alice",
-        "--access-policy",
+        "--retrieval-scope",
         "query-policy.yaml",
     ]);
-    let decision_logs = remove_object_field(&mut actual, "query_result", "decision_logs");
+    let scope_evaluations = remove_object_field(&mut actual, "query_result", "scope_evaluations");
     remove_key_recursively(&mut actual["query_result"]["citations"], "score");
     remove_key_recursively(&mut actual["query_result"]["matched_pages"], "score");
 
@@ -399,7 +399,6 @@ fn query_cli_returns_query_result_golden() {
                 "confidence": "high",
                 "citations": ["[Query Target](docs/query.md)"],
                 "lifecycle": "draft",
-                "access_policy_refs": ["query-allow"],
                 "subject_kind": "user",
                 "subject_id": "alice"
             }
@@ -407,8 +406,8 @@ fn query_cli_returns_query_result_golden() {
     });
 
     assert_eq!(actual, expected);
-    assert_decision_logs(
-        &decision_logs,
+    assert_scope_evaluations(
+        &scope_evaluations,
         "query",
         "llmwiki-query",
         "query-allow",
@@ -495,7 +494,7 @@ fn query_cli_with_store_returns_store_metadata_golden() {
     );
     write_file(
         team_root.join("query-policy.yaml"),
-        "policy:\n  policy_id: query-allow\n  subject:\n    kind: user\n    id: alice\n  scope: team\n  store_id: team:platform\n  team_id: platform\n  operation: query\n  content_level: content\n  resource:\n    type: concept_document\n    selector: \"*\"\n  decision: allow\n  reason: allow query\n",
+        "retrieval_scope:\n  rule_id: query-allow\n  subject:\n    kind: user\n    id: alice\n  scope: team\n  store_id: team:platform\n  team_id: platform\n  operation: query\n  content_level: content\n  resource:\n    type: concept_document\n    selector: \"*\"\n  selection: include\n  reason: allow query\n",
     );
 
     let actual = run_and_normalize(&[
@@ -512,7 +511,7 @@ fn query_cli_with_store_returns_store_metadata_golden() {
         "user",
         "--subject-id",
         "alice",
-        "--access-policy",
+        "--retrieval-scope",
         "query-policy.yaml",
     ]);
 
@@ -521,8 +520,8 @@ fn query_cli_with_store_returns_store_metadata_golden() {
     assert_eq!(result["store_id"], "team:platform");
     assert_eq!(result["storage_class"], "team");
     assert_eq!(result["team_id"], "platform");
-    assert_eq!(result["decision_logs"][0]["store_id"], "team:platform");
-    assert_eq!(result["decision_logs"][0]["team_id"], "platform");
+    assert_eq!(result["scope_evaluations"][0]["store_id"], "team:platform");
+    assert_eq!(result["scope_evaluations"][0]["team_id"], "platform");
 }
 
 #[test]
@@ -546,7 +545,7 @@ fn store_query_does_not_leak_same_scope_from_another_team_store() {
     );
     write_file(
         platform.join("query-policy.yaml"),
-        "policy:\n  policy_id: platform-query\n  subject:\n    kind: user\n    id: alice\n  scope: team\n  store_id: team:platform\n  team_id: platform\n  operation: query\n  content_level: content\n  resource:\n    type: concept_document\n    selector: \"*\"\n  decision: allow\n  reason: allow platform query\n",
+        "retrieval_scope:\n  rule_id: platform-query\n  subject:\n    kind: user\n    id: alice\n  scope: team\n  store_id: team:platform\n  team_id: platform\n  operation: query\n  content_level: content\n  resource:\n    type: concept_document\n    selector: \"*\"\n  selection: include\n  reason: allow platform query\n",
     );
 
     let actual = run_cli(&[
@@ -563,7 +562,7 @@ fn store_query_does_not_leak_same_scope_from_another_team_store() {
         "user",
         "--subject-id",
         "alice",
-        "--access-policy",
+        "--retrieval-scope",
         "query-policy.yaml",
     ]);
 
@@ -819,7 +818,7 @@ fn related_cli_returns_related_result_golden() {
     );
     write_file(
         root.path().join("related-policy.yaml"),
-        "policy:\n  policy_id: related-allow\n  subject:\n    kind: user\n    id: alice\n  scope: team\n  operation: answer_suggestion\n  content_level: \"*\"\n  resource:\n    type: \"*\"\n    selector: \"*\"\n  decision: allow\n  reason: allow related\n",
+        "retrieval_scope:\n  rule_id: related-allow\n  subject:\n    kind: user\n    id: alice\n  scope: team\n  operation: answer_suggestion\n  content_level: \"*\"\n  resource:\n    type: \"*\"\n    selector: \"*\"\n  selection: include\n  reason: allow related\n",
     );
 
     let mut actual = run_and_normalize(&[
@@ -836,7 +835,7 @@ fn related_cli_returns_related_result_golden() {
         "user",
         "--subject-id",
         "alice",
-        "--access-policy",
+        "--retrieval-scope",
         "related-policy.yaml",
         "--depth",
         "2",
@@ -844,7 +843,7 @@ fn related_cli_returns_related_result_golden() {
         "5",
         "docs/procedure.md",
     ]);
-    let decision_logs = remove_object_field(&mut actual, "related_result", "decision_logs");
+    let scope_evaluations = remove_object_field(&mut actual, "related_result", "scope_evaluations");
 
     let expected = json!({
         "related_result": {
@@ -873,7 +872,7 @@ fn related_cli_returns_related_result_golden() {
                             }
                         ]
                     ],
-                    "access_decisions": [
+                    "scope_evaluations": [
                         {
                             "stage": "seed",
                             "log": {
@@ -881,10 +880,10 @@ fn related_cli_returns_related_result_golden() {
                                 "operation": "answer_suggestion",
                                 "content_level": "metadata",
                                 "resource": "{\"type\":\"concept_document\",\"selector\":\"docs/procedure.md\"}",
-                                "decision": "allow",
-                                "policy_ids": ["related-allow"],
-                                "decided_by": "llmwiki-related",
-                                "decided_at": "<decided_at>",
+                                "selection": "include",
+                                "rule_ids": ["related-allow"],
+                                "evaluated_by": "llmwiki-related",
+                                "evaluated_at": "<evaluated_at>",
                                 "reason": "allow related"
                             }
                         },
@@ -895,10 +894,10 @@ fn related_cli_returns_related_result_golden() {
                                 "operation": "answer_suggestion",
                                 "content_level": "metadata",
                                 "resource": "{\"type\":\"relation_edge\",\"selector\":\"docs/procedure.md --constrained_by--> docs/policy.md\"}",
-                                "decision": "allow",
-                                "policy_ids": ["related-allow"],
-                                "decided_by": "llmwiki-related",
-                                "decided_at": "<decided_at>",
+                                "selection": "include",
+                                "rule_ids": ["related-allow"],
+                                "evaluated_by": "llmwiki-related",
+                                "evaluated_at": "<evaluated_at>",
                                 "reason": "allow related"
                             }
                         },
@@ -909,10 +908,10 @@ fn related_cli_returns_related_result_golden() {
                                 "operation": "answer_suggestion",
                                 "content_level": "metadata",
                                 "resource": "{\"type\":\"concept_document\",\"selector\":\"docs/policy.md\"}",
-                                "decision": "allow",
-                                "policy_ids": ["related-allow"],
-                                "decided_by": "llmwiki-related",
-                                "decided_at": "<decided_at>",
+                                "selection": "include",
+                                "rule_ids": ["related-allow"],
+                                "evaluated_by": "llmwiki-related",
+                                "evaluated_at": "<evaluated_at>",
                                 "reason": "allow related"
                             }
                         },
@@ -923,10 +922,10 @@ fn related_cli_returns_related_result_golden() {
                                 "operation": "answer_suggestion",
                                 "content_level": "summary",
                                 "resource": "{\"type\":\"concept_document\",\"selector\":\"docs/policy.md\"}",
-                                "decision": "allow",
-                                "policy_ids": ["related-allow"],
-                                "decided_by": "llmwiki-related",
-                                "decided_at": "<decided_at>",
+                                "selection": "include",
+                                "rule_ids": ["related-allow"],
+                                "evaluated_by": "llmwiki-related",
+                                "evaluated_at": "<evaluated_at>",
                                 "reason": "allow related"
                             }
                         }
@@ -938,7 +937,7 @@ fn related_cli_returns_related_result_golden() {
     });
 
     assert_eq!(actual, expected);
-    assert_eq!(decision_logs.as_array().unwrap().len(), 4);
+    assert_eq!(scope_evaluations.as_array().unwrap().len(), 4);
 }
 
 #[test]
@@ -978,7 +977,7 @@ fn store_related_traversal_stays_inside_selected_team_store() {
     );
     write_file(
         platform.join("related-policy.yaml"),
-        "policy:\n  policy_id: platform-related\n  subject:\n    kind: user\n    id: alice\n  scope: team\n  store_id: team:platform\n  team_id: platform\n  operation: answer_suggestion\n  content_level: \"*\"\n  resource:\n    type: \"*\"\n    selector: \"*\"\n  decision: allow\n  reason: allow platform related\n",
+        "retrieval_scope:\n  rule_id: platform-related\n  subject:\n    kind: user\n    id: alice\n  scope: team\n  store_id: team:platform\n  team_id: platform\n  operation: answer_suggestion\n  content_level: \"*\"\n  resource:\n    type: \"*\"\n    selector: \"*\"\n  selection: include\n  reason: allow platform related\n",
     );
 
     let actual = run_cli(&[
@@ -995,7 +994,7 @@ fn store_related_traversal_stays_inside_selected_team_store() {
         "user",
         "--subject-id",
         "alice",
-        "--access-policy",
+        "--retrieval-scope",
         "related-policy.yaml",
         "docs/procedure.md",
     ]);
@@ -1008,11 +1007,11 @@ fn store_related_traversal_stays_inside_selected_team_store() {
     assert!(result.to_string().contains("Platform policy body"));
     assert!(!result.to_string().contains("Payments policy body"));
     assert_eq!(
-        result["results"][0]["access_decisions"][0]["log"]["store_id"],
+        result["results"][0]["scope_evaluations"][0]["log"]["store_id"],
         "team:platform"
     );
     assert_eq!(
-        result["results"][0]["access_decisions"][0]["log"]["team_id"],
+        result["results"][0]["scope_evaluations"][0]["log"]["team_id"],
         "platform"
     );
 }
@@ -1040,7 +1039,7 @@ fn related_cli_returns_hold_golden_for_invalid_operation() {
         "user",
         "--subject-id",
         "alice",
-        "--access-policy",
+        "--retrieval-scope",
         "missing-policy.yaml",
         "docs/procedure.md",
     ]);
@@ -1056,7 +1055,7 @@ fn related_cli_returns_hold_golden_for_invalid_operation() {
             "content_level": "content",
             "depth": 2,
             "results": [],
-            "decision_logs": []
+            "scope_evaluations": []
         }
     });
 
@@ -1084,8 +1083,6 @@ fn file_cli_returns_filing_artifact_golden() {
         "high",
         "--citation",
         "[Source](source.md)",
-        "--access-policy-ref",
-        "policy/default",
         "--candidate",
         "candidate.md",
     ]);
@@ -1099,7 +1096,6 @@ fn file_cli_returns_filing_artifact_golden() {
             "citations": ["[Source](source.md)"],
             "owner": "alice",
             "lifecycle": "draft",
-            "access_policy_refs": ["policy/default"],
             "artifact_path": "<artifact_path>"
         }
     });
@@ -1363,12 +1359,10 @@ fn store_propose_rejects_private_to_org_without_team_step() {
     ]);
 
     assert_eq!(actual["command_result"]["status"], "hold");
-    assert!(
-        actual["command_result"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("private -> org is not allowed")
-    );
+    assert!(actual["command_result"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("private -> org is not allowed"));
 }
 
 #[test]
@@ -1381,7 +1375,7 @@ fn export_cli_returns_export_artifact_golden() {
     );
     write_file(
         root.path().join("export-policy.yaml"),
-        "policy:\n  policy_id: export-allow\n  subject:\n    kind: user\n    id: alice\n  scope: personal\n  operation: export\n  content_level: content\n  resource:\n    type: concept_document\n    selector: \"*\"\n  decision: allow\n  reason: allow export\n",
+        "export_scope:\n  rule_id: export-allow\n  subject:\n    kind: user\n    id: alice\n  scope: personal\n  operation: export\n  content_level: content\n  resource:\n    type: concept_document\n    selector: \"*\"\n  selection: include\n  reason: allow export\n",
     );
 
     let mut actual = run_and_normalize(&[
@@ -1396,11 +1390,12 @@ fn export_cli_returns_export_artifact_golden() {
         "user",
         "--subject-id",
         "alice",
-        "--access-policy",
+        "--export-scope",
         "export-policy.yaml",
         "docs/export.md",
     ]);
-    let decision_logs = remove_object_field(&mut actual, "export_artifact", "decision_logs");
+    let scope_evaluations =
+        remove_object_field(&mut actual, "export_artifact", "scope_evaluations");
 
     let expected = json!({
         "export_artifact": {
@@ -1420,8 +1415,8 @@ fn export_cli_returns_export_artifact_golden() {
     });
 
     assert_eq!(actual, expected);
-    assert_decision_logs(
-        &decision_logs,
+    assert_scope_evaluations(
+        &scope_evaluations,
         "export",
         "llmwiki-export",
         "export-allow",
@@ -1538,20 +1533,37 @@ fn query_cli_returns_hold_golden_for_invalid_scope() {
             "citations": [],
             "confidence": "low",
             "matched_pages": [],
-            "decision_logs": [],
+            "scope_evaluations": [],
             "filing_candidate_metadata": {
                 "source": "query",
                 "scope": "global",
                 "content_level": "",
                 "confidence": "low",
                 "citations": [],
-                "lifecycle": "draft",
-                "access_policy_refs": [],
+                "lifecycle": "draft"
             }
         }
     });
 
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn query_cli_rejects_legacy_access_policy_flag() {
+    let (output, actual) = run_cli_allow_failure(&[
+        "query",
+        "--workspace-root",
+        ".",
+        "--access-policy",
+        "policy.yaml",
+    ]);
+
+    assert!(!output.status.success());
+    assert_eq!(actual["command_result"]["status"], "error");
+    assert!(actual["command_result"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("--access-policy"));
 }
 
 #[test]
@@ -1573,8 +1585,6 @@ fn file_cli_returns_hold_golden_for_missing_owner() {
         "high",
         "--citation",
         "[Source](source.md)",
-        "--access-policy-ref",
-        "policy/default",
         "--candidate",
         "candidate.md",
     ]);
@@ -1588,6 +1598,24 @@ fn file_cli_returns_hold_golden_for_missing_owner() {
     });
 
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn file_cli_rejects_legacy_access_policy_ref_flag() {
+    let (output, actual) = run_cli_allow_failure(&[
+        "file",
+        "--workspace-root",
+        ".",
+        "--access-policy-ref",
+        "policy/default",
+    ]);
+
+    assert!(!output.status.success());
+    assert_eq!(actual["command_result"]["status"], "error");
+    assert!(actual["command_result"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("--access-policy-ref"));
 }
 
 #[test]

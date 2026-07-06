@@ -1,6 +1,6 @@
 use crate::access::{
-    evaluate_access, AccessDecision, AccessEvaluationContext, AccessPolicy, AccessRequest,
-    AccessResource, AccessSubject,
+    evaluate_scope, ScopeEvaluationContext, ScopeEvaluationRequest, ScopeResource, ScopeRule,
+    ScopeSelection, ScopeSubject,
 };
 use crate::markdown::parse_markdown;
 use crate::report::{ExportArtifact, ExportArtifactEnvelope, ExportFile};
@@ -50,7 +50,7 @@ pub fn export_workspace(
     content_level: Option<String>,
     subject_kind: Option<String>,
     subject_id: Option<String>,
-    access_policy_paths: Vec<PathBuf>,
+    export_scope_paths: Vec<PathBuf>,
     store_context: Option<StoreContext>,
 ) -> Result<ExportOutcome, ExportError> {
     let root = resolve_workspace_root(workspace_root)?;
@@ -83,9 +83,9 @@ pub fn export_workspace(
         });
     };
 
-    if access_policy_paths.is_empty() {
+    if export_scope_paths.is_empty() {
         return Ok(ExportOutcome::Hold {
-            message: "at least one access_policy is required".to_string(),
+            message: "at least one export_scope is required".to_string(),
         });
     }
 
@@ -106,7 +106,7 @@ pub fn export_workspace(
         None => None,
     };
 
-    let policies = load_access_policies(&root, &access_policy_paths)?;
+    let scope_rules = load_export_scopes(&root, &export_scope_paths)?;
     let bundle_root = content_root(&root);
     let source_paths = collect_markdown_paths(&root, &bundle_root, paths)?;
     if source_paths.is_empty() {
@@ -163,12 +163,12 @@ pub fn export_workspace(
         });
     }
 
-    let mut decision_logs = Vec::new();
+    let mut scope_evaluations = Vec::new();
     let mut has_hold = false;
 
     for (path, page_scope) in &selected_pages {
-        let request = AccessRequest {
-            subject: AccessSubject {
+        let request = ScopeEvaluationRequest {
+            subject: ScopeSubject {
                 kind: subject_kind.to_string(),
                 id: subject_id.to_string(),
             },
@@ -184,42 +184,42 @@ pub fn export_workspace(
                 .and_then(|context| context.team_id.clone()),
             operation: "export".to_string(),
             content_level: content_level.to_string(),
-            resource: AccessResource {
+            resource: ScopeResource {
                 type_: "concept_document".to_string(),
                 selector: relative_path(&root, path),
             },
         };
-        let log = evaluate_access(
+        let log = evaluate_scope(
             request,
-            &policies,
-            AccessEvaluationContext {
-                decided_by: "llmwiki-export".to_string(),
-                decided_at: Utc::now().to_rfc3339(),
+            &scope_rules,
+            ScopeEvaluationContext {
+                evaluated_by: "llmwiki-export".to_string(),
+                evaluated_at: Utc::now().to_rfc3339(),
             },
         );
 
-        match log.decision {
-            AccessDecision::Deny => {
+        match log.selection {
+            ScopeSelection::Exclude => {
                 return Ok(ExportOutcome::Deny {
-                    message: format!("access denied for {}: {}", log.resource, log.reason),
+                    message: format!("scope evaluation excluded {}: {}", log.resource, log.reason),
                 });
             }
-            AccessDecision::Hold => {
+            ScopeSelection::Hold => {
                 has_hold = true;
-                decision_logs.push(log);
+                scope_evaluations.push(log);
             }
-            AccessDecision::Allow => {
-                decision_logs.push(log);
+            ScopeSelection::Include => {
+                scope_evaluations.push(log);
             }
         }
     }
 
     if has_hold {
-        let reason = decision_logs
+        let reason = scope_evaluations
             .iter()
-            .find(|log| log.decision == AccessDecision::Hold)
-            .map(|log| format!("access hold for {}: {}", log.resource, log.reason))
-            .unwrap_or_else(|| "access hold".to_string());
+            .find(|log| log.selection == ScopeSelection::Hold)
+            .map(|log| format!("scope evaluation held {}: {}", log.resource, log.reason))
+            .unwrap_or_else(|| "scope evaluation hold".to_string());
         return Ok(ExportOutcome::Hold { message: reason });
     }
 
@@ -269,7 +269,7 @@ pub fn export_workspace(
         manifest_path: relative_path(&root, &artifact_dir.join("manifest.json")),
         artifact_path: relative_path(&root, &artifact_dir),
         files,
-        decision_logs,
+        scope_evaluations,
     };
 
     write_export_manifest(&artifact_dir, &artifact)?;
@@ -277,24 +277,24 @@ pub fn export_workspace(
     Ok(ExportOutcome::Artifact(artifact))
 }
 
-fn load_access_policies(
+fn load_export_scopes(
     root: &Path,
-    policy_paths: &[PathBuf],
-) -> Result<Vec<AccessPolicy>, ExportError> {
-    let mut policies = Vec::new();
+    export_scope_paths: &[PathBuf],
+) -> Result<Vec<ScopeRule>, ExportError> {
+    let mut scope_rules = Vec::new();
 
-    for path in policy_paths {
-        let policy_path = resolve_existing_path(root, path, "access policy")?;
-        let content = fs::read_to_string(&policy_path).map_err(|source| ExportError::Io {
+    for path in export_scope_paths {
+        let export_scope_path = resolve_existing_path(root, path, "export_scope")?;
+        let content = fs::read_to_string(&export_scope_path).map_err(|source| ExportError::Io {
             message: format!(
-                "cannot read access policy {}: {source}",
-                policy_path.display()
+                "cannot read export_scope {}: {source}",
+                export_scope_path.display()
             ),
         })?;
-        policies.extend(parse_access_policies(&content, &policy_path)?);
+        scope_rules.extend(parse_export_scopes(&content, &export_scope_path)?);
     }
 
-    Ok(policies)
+    Ok(scope_rules)
 }
 
 fn resolve_existing_path(root: &Path, input: &Path, label: &str) -> Result<PathBuf, ExportError> {
@@ -319,22 +319,27 @@ fn resolve_existing_path(root: &Path, input: &Path, label: &str) -> Result<PathB
     Ok(canonical)
 }
 
-fn parse_access_policies(content: &str, path: &Path) -> Result<Vec<AccessPolicy>, ExportError> {
+fn parse_export_scopes(content: &str, path: &Path) -> Result<Vec<ScopeRule>, ExportError> {
     let value: serde_yaml::Value =
         serde_yaml::from_str(content).map_err(|source| ExportError::Parse {
-            message: format!("cannot parse access policy {}: {source}", path.display()),
+            message: format!("cannot parse export_scope {}: {source}", path.display()),
         })?;
-    let policy_value = match value.as_mapping() {
-        Some(mapping) => mapping
-            .get(serde_yaml::Value::String("policy".to_string()))
-            .unwrap_or(&value),
-        None => &value,
+    let Some(mapping) = value.as_mapping() else {
+        return Err(ExportError::Parse {
+            message: format!("export_scope must be a YAML mapping: {}", path.display()),
+        });
     };
-    let policy: AccessPolicy =
-        serde_yaml::from_value(policy_value.clone()).map_err(|source| ExportError::Parse {
-            message: format!("cannot decode access policy {}: {source}", path.display()),
+    let Some(scope_value) = mapping.get(serde_yaml::Value::String("export_scope".to_string()))
+    else {
+        return Err(ExportError::Parse {
+            message: format!("export_scope root key is required: {}", path.display()),
+        });
+    };
+    let scope_rule: ScopeRule =
+        serde_yaml::from_value(scope_value.clone()).map_err(|source| ExportError::Parse {
+            message: format!("cannot decode export_scope {}: {source}", path.display()),
         })?;
-    Ok(vec![policy])
+    Ok(vec![scope_rule])
 }
 
 fn collect_markdown_paths(
@@ -743,7 +748,7 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn allow_policy_and_content_export_creates_artifact_and_copies_files() {
+    fn include_rule_and_content_export_creates_artifact_and_copies_files() {
         let dir = tempdir().unwrap();
         fs::create_dir_all(dir.path().join("docs").join("nested")).unwrap();
         write_file(
@@ -757,8 +762,8 @@ mod tests {
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: export-allow
+export_scope:
+  rule_id: export-allow
   subject:
     kind: user
     id: alice
@@ -768,7 +773,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
@@ -816,14 +821,16 @@ policy:
                 dir.path().join("policy.json"),
                 r#"
 {
-  "policy_id": "export-allow",
-  "subject": { "kind": "user", "id": "alice" },
-  "scope": "team",
-  "operation": "export",
-  "content_level": "*",
-  "resource": { "type": "concept_document", "selector": "index.md" },
-  "decision": "allow",
-  "reason": "allow export"
+  "export_scope": {
+    "rule_id": "export-allow",
+    "subject": { "kind": "user", "id": "alice" },
+    "scope": "team",
+    "operation": "export",
+    "content_level": "*",
+    "resource": { "type": "concept_document", "selector": "index.md" },
+    "selection": "include",
+    "reason": "allow export"
+  }
 }
 "#,
             );
@@ -910,8 +917,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: export-hold
+export_scope:
+  rule_id: export-hold
   subject:
     kind: user
     id: bob
@@ -921,7 +928,7 @@ policy:
   resource:
     type: concept_document
     selector: index.md
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
@@ -956,8 +963,8 @@ policy:
         write_policy_yaml(
             dir.path().join("allow.yaml"),
             r#"
-policy:
-  policy_id: export-allow
+export_scope:
+  rule_id: export-allow
   subject:
     kind: user
     id: alice
@@ -967,15 +974,15 @@ policy:
   resource:
     type: concept_document
     selector: index.md
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
         write_policy_yaml(
             dir.path().join("deny.yaml"),
             r#"
-policy:
-  policy_id: export-deny
+export_scope:
+  rule_id: export-deny
   subject:
     kind: user
     id: alice
@@ -985,7 +992,7 @@ policy:
   resource:
     type: concept_document
     selector: index.md
-  decision: deny
+  selection: exclude
   reason: deny export
 "#,
         );
@@ -1015,8 +1022,8 @@ policy:
         write_policy_yaml(
             dir.path().join("allow.yaml"),
             r#"
-policy:
-  policy_id: export-allow
+export_scope:
+  rule_id: export-allow
   subject:
     kind: user
     id: alice
@@ -1026,15 +1033,15 @@ policy:
   resource:
     type: concept_document
     selector: index.md
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
         write_policy_yaml(
             dir.path().join("hold.yaml"),
             r#"
-policy:
-  policy_id: export-hold
+export_scope:
+  rule_id: export-hold
   subject:
     kind: user
     id: alice
@@ -1044,7 +1051,7 @@ policy:
   resource:
     type: concept_document
     selector: index.md
-  decision: hold
+  selection: hold
   reason: hold export
 "#,
         );
@@ -1076,8 +1083,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: export-allow
+export_scope:
+  rule_id: export-allow
   subject:
     kind: user
     id: alice
@@ -1087,7 +1094,7 @@ policy:
   resource:
     type: concept_document
     selector: index.md
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
@@ -1176,8 +1183,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: export-allow
+export_scope:
+  rule_id: export-allow
   subject:
     kind: user
     id: alice
@@ -1187,7 +1194,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
@@ -1225,8 +1232,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: export-allow
+export_scope:
+  rule_id: export-allow
   subject:
     kind: user
     id: alice
@@ -1236,7 +1243,7 @@ policy:
   resource:
     type: concept_document
     selector: docs/index.md
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
@@ -1264,8 +1271,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: export-allow
+export_scope:
+  rule_id: export-allow
   subject:
     kind: user
     id: alice
@@ -1275,7 +1282,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
@@ -1315,8 +1322,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: export-allow
+export_scope:
+  rule_id: export-allow
   subject:
     kind: user
     id: alice
@@ -1326,7 +1333,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
@@ -1357,8 +1364,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: export-allow
+export_scope:
+  rule_id: export-allow
   subject:
     kind: user
     id: alice
@@ -1368,7 +1375,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
@@ -1399,8 +1406,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: export-allow
+export_scope:
+  rule_id: export-allow
   subject:
     kind: user
     id: alice
@@ -1410,7 +1417,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
@@ -1445,8 +1452,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: export-allow
+export_scope:
+  rule_id: export-allow
   subject:
     kind: user
     id: alice
@@ -1456,7 +1463,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
@@ -1487,8 +1494,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: export-allow
+export_scope:
+  rule_id: export-allow
   subject:
     kind: user
     id: alice
@@ -1498,7 +1505,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
@@ -1540,8 +1547,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: export-allow
+export_scope:
+  rule_id: export-allow
   subject:
     kind: user
     id: alice
@@ -1551,7 +1558,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
@@ -1592,8 +1599,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: export-allow
+export_scope:
+  rule_id: export-allow
   subject:
     kind: user
     id: alice
@@ -1603,7 +1610,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
@@ -1645,8 +1652,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: export-allow
+export_scope:
+  rule_id: export-allow
   subject:
     kind: user
     id: alice
@@ -1656,7 +1663,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
@@ -1676,7 +1683,7 @@ policy:
     }
 
     #[test]
-    fn policy_file_wrapper_and_direct_object_both_parse() {
+    fn export_scope_yaml_and_json_wrappers_both_parse() {
         let dir = tempdir().unwrap();
         fs::create_dir_all(dir.path().join("docs")).unwrap();
         write_file(
@@ -1686,8 +1693,8 @@ policy:
         write_policy_yaml(
             dir.path().join("wrapper.yaml"),
             r#"
-policy:
-  policy_id: export-wrapper
+export_scope:
+  rule_id: export-wrapper
   subject:
     kind: user
     id: alice
@@ -1697,7 +1704,7 @@ policy:
   resource:
     type: concept_document
     selector: docs/index.md
-  decision: allow
+  selection: include
   reason: allow export
 "#,
         );
@@ -1705,14 +1712,16 @@ policy:
             dir.path().join("direct.json"),
             r#"
 {
-  "policy_id": "export-direct",
-  "subject": { "kind": "user", "id": "alice" },
-  "scope": "team",
-  "operation": "export",
-  "content_level": "content",
-  "resource": { "type": "concept_document", "selector": "docs/index.md" },
-  "decision": "allow",
-  "reason": "allow export"
+  "export_scope": {
+    "rule_id": "export-direct",
+    "subject": { "kind": "user", "id": "alice" },
+    "scope": "team",
+    "operation": "export",
+    "content_level": "content",
+    "resource": { "type": "concept_document", "selector": "docs/index.md" },
+    "selection": "include",
+    "reason": "allow export"
+  }
 }
 "#,
         );

@@ -13,7 +13,7 @@ Accepted
 
 ## Context
 
-LLMWiki には scope、owner、access policy、sensitivity、proposal など OKF 本体にない情報が必要である。一方で OKF の最小性は壊したくない。
+LLMWiki には scope、owner、retrieval/export scope rule、sensitivity、proposal など OKF 本体にない情報が必要である。一方で OKF の最小性は壊したくない。
 
 ## Decision
 

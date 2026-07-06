@@ -17,7 +17,6 @@ pub struct FileCommandInput {
     pub risk_owner: Option<String>,
     pub confidence: Option<String>,
     pub citations: Vec<String>,
-    pub access_policy_refs: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -57,7 +56,6 @@ pub struct FilingArtifact {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub risk_owner: Option<String>,
     pub lifecycle: String,
-    pub access_policy_refs: Vec<String>,
     pub artifact_path: String,
 }
 
@@ -124,15 +122,6 @@ pub fn file_candidate(input: FileCommandInput) -> Result<serde_json::Value, File
         return hold("reviewer is required for team and org scope");
     }
 
-    let access_policy_refs = input
-        .access_policy_refs
-        .into_iter()
-        .filter(|reference| !reference.trim().is_empty())
-        .collect::<Vec<_>>();
-    if access_policy_refs.is_empty() {
-        return hold("at least one access_policy_ref is required");
-    }
-
     let candidates_dir = prepare_candidates_dir(&root)?;
     let artifact_path = candidates_dir.join(format!("{}.json", safe_artifact_stem(&source)));
     reject_symlink(&artifact_path)?;
@@ -152,7 +141,6 @@ pub fn file_candidate(input: FileCommandInput) -> Result<serde_json::Value, File
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned),
         lifecycle: "draft".to_string(),
-        access_policy_refs,
         artifact_path: relative_path(&root, &artifact_path),
     };
     let envelope = FilingArtifactEnvelope {
@@ -427,23 +415,6 @@ mod tests {
     }
 
     #[test]
-    fn missing_access_policy_refs_returns_hold() {
-        let dir = tempdir().unwrap();
-        write_file(dir.path().join("index.md"), "# Index\n");
-        write_file(dir.path().join("candidate.md"), "# Candidate\n");
-        let mut input = valid_input(dir.path());
-        input.access_policy_refs = vec![" ".to_string()];
-
-        let value = file_candidate(input).unwrap();
-
-        assert_eq!(value["command_result"]["status"], "hold");
-        assert!(value["command_result"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("access_policy_ref"));
-    }
-
-    #[test]
     fn rejects_directory_candidate() {
         let dir = tempdir().unwrap();
         write_file(dir.path().join("index.md"), "# Index\n");
@@ -511,7 +482,6 @@ mod tests {
             risk_owner: None,
             confidence: Some("high".to_string()),
             citations: vec!["[Source](source.md)".to_string()],
-            access_policy_refs: vec!["policy/default".to_string()],
         }
     }
 

@@ -26,7 +26,7 @@ LLMWiki は source、wiki、metadata、graph、workflow state を扱う。これ
 
 - `source store`: immutable raw source。
 - `wiki store`: OKF-compatible Markdown bundle。
-- `metadata store`: owner、status、access policy など。
+- `metadata store`: owner、status、citation metadata、confidence など。
 - `graph index`: Markdown link と relation から生成する derived index。
 - `workflow state`: proposal、review、approval、rejection。
 

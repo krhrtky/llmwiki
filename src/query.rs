@@ -1,6 +1,6 @@
 use crate::access::{
-    evaluate_access, AccessDecision, AccessDecisionLog, AccessEvaluationContext, AccessPolicy,
-    AccessRequest, AccessResource, AccessSubject,
+    evaluate_scope, ScopeEvaluation, ScopeEvaluationContext, ScopeEvaluationRequest, ScopeResource,
+    ScopeRule, ScopeSelection, ScopeSubject,
 };
 use crate::markdown::{parse_markdown, MarkdownDocument};
 use crate::report::{FilingCandidateMetadata, QueryCitation, QueryResult};
@@ -43,7 +43,7 @@ pub fn query_workspace(
     content_level: Option<String>,
     subject_kind: Option<String>,
     subject_id: Option<String>,
-    access_policy_paths: Vec<PathBuf>,
+    retrieval_scope_paths: Vec<PathBuf>,
     store_context: Option<StoreContext>,
 ) -> Result<QueryResult, QueryError> {
     let root = resolve_workspace_root(workspace_root)?;
@@ -125,17 +125,17 @@ pub fn query_workspace(
         ));
     };
 
-    if access_policy_paths.is_empty() {
+    if retrieval_scope_paths.is_empty() {
         return Ok(QueryResult::hold(
             generated_at,
             Some(question.to_string()),
             Some(scope.to_string()),
             Some(content_level.to_string()),
-            "at least one access_policy is required".to_string(),
+            "at least one retrieval_scope is required".to_string(),
         ));
     }
 
-    let policies = load_access_policies(&root, &access_policy_paths)?;
+    let scope_rules = load_retrieval_scopes(&root, &retrieval_scope_paths)?;
     let bundle_root = content_root(&root);
     let pages = collect_query_pages(&root, &bundle_root)?;
     let pages = match pages {
@@ -167,11 +167,11 @@ pub fn query_workspace(
         ));
     }
 
-    let decision_logs = scoped_pages
+    let scope_evaluations = scoped_pages
         .iter()
         .map(|page| {
-            let request = AccessRequest {
-                subject: AccessSubject {
+            let request = ScopeEvaluationRequest {
+                subject: ScopeSubject {
                     kind: subject_kind.to_string(),
                     id: subject_id.to_string(),
                 },
@@ -184,47 +184,47 @@ pub fn query_workspace(
                     .and_then(|context| context.team_id.clone()),
                 operation: "query".to_string(),
                 content_level: content_level.to_string(),
-                resource: AccessResource {
+                resource: ScopeResource {
                     type_: "concept_document".to_string(),
                     selector: page.relative_path.clone(),
                 },
             };
-            evaluate_access(
+            evaluate_scope(
                 request,
-                &policies,
-                AccessEvaluationContext {
-                    decided_by: "llmwiki-query".to_string(),
-                    decided_at: generated_at.clone(),
+                &scope_rules,
+                ScopeEvaluationContext {
+                    evaluated_by: "llmwiki-query".to_string(),
+                    evaluated_at: generated_at.clone(),
                 },
             )
         })
         .collect::<Vec<_>>();
 
-    if let Some(log) = decision_logs
+    if let Some(log) = scope_evaluations
         .iter()
-        .find(|log| log.decision == AccessDecision::Deny)
+        .find(|log| log.selection == ScopeSelection::Exclude)
     {
         return Ok(QueryResult::deny(
             generated_at,
             Some(question.to_string()),
             Some(scope.to_string()),
             Some(content_level.to_string()),
-            format!("access denied for {}: {}", log.resource, log.reason),
-            decision_logs,
+            format!("scope evaluation excluded {}: {}", log.resource, log.reason),
+            scope_evaluations,
         ));
     }
 
-    if let Some(log) = decision_logs
+    if let Some(log) = scope_evaluations
         .iter()
-        .find(|log| log.decision == AccessDecision::Hold)
+        .find(|log| log.selection == ScopeSelection::Hold)
     {
         return Ok(QueryResult::hold_with_logs(
             generated_at,
             Some(question.to_string()),
             Some(scope.to_string()),
             Some(content_level.to_string()),
-            format!("access hold for {}: {}", log.resource, log.reason),
-            decision_logs,
+            format!("scope evaluation held {}: {}", log.resource, log.reason),
+            scope_evaluations,
         ));
     }
 
@@ -236,7 +236,7 @@ pub fn query_workspace(
             Some(scope.to_string()),
             Some(content_level.to_string()),
             "no lexical matches found".to_string(),
-            decision_logs,
+            scope_evaluations,
         ));
     }
 
@@ -245,7 +245,6 @@ pub fn query_workspace(
         "Deterministic query found {} candidate page(s).",
         hits.len()
     );
-    let access_policy_refs = access_policy_refs(&decision_logs);
     let filing_citations = markdown_citations(&hits);
 
     Ok(QueryResult::success(
@@ -256,7 +255,7 @@ pub fn query_workspace(
         answer,
         confidence.clone(),
         hits,
-        decision_logs,
+        scope_evaluations,
         FilingCandidateMetadata {
             source: "query".to_string(),
             scope: scope.to_string(),
@@ -267,22 +266,10 @@ pub fn query_workspace(
             reviewer: None,
             risk_owner: None,
             lifecycle: "draft".to_string(),
-            access_policy_refs,
             subject_kind: Some(subject_kind.to_string()),
             subject_id: Some(subject_id.to_string()),
         },
     ))
-}
-
-fn access_policy_refs(decision_logs: &[AccessDecisionLog]) -> Vec<String> {
-    let mut refs = decision_logs
-        .iter()
-        .filter(|log| log.decision == AccessDecision::Allow)
-        .flat_map(|log| log.policy_ids.iter().cloned())
-        .collect::<Vec<_>>();
-    refs.sort();
-    refs.dedup();
-    refs
 }
 
 fn markdown_citations(citations: &[QueryCitation]) -> Vec<String> {
@@ -415,40 +402,46 @@ fn extract_page_scope(
     }
 }
 
-fn load_access_policies(
+fn load_retrieval_scopes(
     root: &Path,
-    policy_paths: &[PathBuf],
-) -> Result<Vec<AccessPolicy>, QueryError> {
-    let mut policies = Vec::new();
-    for path in policy_paths {
-        let policy_path = resolve_existing_path(root, path, "access policy")?;
-        let content = fs::read_to_string(&policy_path).map_err(|source| QueryError::Io {
-            message: format!(
-                "cannot read access policy {}: {source}",
-                policy_path.display()
-            ),
-        })?;
-        policies.extend(parse_access_policies(&content, &policy_path)?);
+    retrieval_scope_paths: &[PathBuf],
+) -> Result<Vec<ScopeRule>, QueryError> {
+    let mut scope_rules = Vec::new();
+    for path in retrieval_scope_paths {
+        let retrieval_scope_path = resolve_existing_path(root, path, "retrieval_scope")?;
+        let content =
+            fs::read_to_string(&retrieval_scope_path).map_err(|source| QueryError::Io {
+                message: format!(
+                    "cannot read retrieval_scope {}: {source}",
+                    retrieval_scope_path.display()
+                ),
+            })?;
+        scope_rules.extend(parse_retrieval_scopes(&content, &retrieval_scope_path)?);
     }
-    Ok(policies)
+    Ok(scope_rules)
 }
 
-fn parse_access_policies(content: &str, path: &Path) -> Result<Vec<AccessPolicy>, QueryError> {
+fn parse_retrieval_scopes(content: &str, path: &Path) -> Result<Vec<ScopeRule>, QueryError> {
     let value: serde_yaml::Value =
         serde_yaml::from_str(content).map_err(|source| QueryError::Parse {
-            message: format!("cannot parse access policy {}: {source}", path.display()),
+            message: format!("cannot parse retrieval_scope {}: {source}", path.display()),
         })?;
-    let policy_value = match value.as_mapping() {
-        Some(mapping) => mapping
-            .get(serde_yaml::Value::String("policy".to_string()))
-            .unwrap_or(&value),
-        None => &value,
+    let Some(mapping) = value.as_mapping() else {
+        return Err(QueryError::Parse {
+            message: format!("retrieval_scope must be a YAML mapping: {}", path.display()),
+        });
     };
-    let policy: AccessPolicy =
-        serde_yaml::from_value(policy_value.clone()).map_err(|source| QueryError::Parse {
-            message: format!("cannot decode access policy {}: {source}", path.display()),
+    let Some(scope_value) = mapping.get(serde_yaml::Value::String("retrieval_scope".to_string()))
+    else {
+        return Err(QueryError::Parse {
+            message: format!("retrieval_scope root key is required: {}", path.display()),
+        });
+    };
+    let scope_rule: ScopeRule =
+        serde_yaml::from_value(scope_value.clone()).map_err(|source| QueryError::Parse {
+            message: format!("cannot decode retrieval_scope {}: {source}", path.display()),
         })?;
-    Ok(vec![policy])
+    Ok(vec![scope_rule])
 }
 
 fn resolve_existing_path(root: &Path, input: &Path, label: &str) -> Result<PathBuf, QueryError> {
@@ -723,7 +716,7 @@ impl QueryResult {
         confidence: String,
         citations: Vec<QueryCitation>,
         matched_pages: Vec<QueryCitation>,
-        decision_logs: Vec<AccessDecisionLog>,
+        scope_evaluations: Vec<ScopeEvaluation>,
         filing_candidate_metadata: FilingCandidateMetadata,
     ) -> Self {
         Self {
@@ -737,7 +730,7 @@ impl QueryResult {
             citations,
             confidence,
             matched_pages,
-            decision_logs,
+            scope_evaluations,
             filing_candidate_metadata,
         }
     }
@@ -765,7 +758,7 @@ impl QueryResult {
         scope: Option<String>,
         content_level: Option<String>,
         message: String,
-        decision_logs: Vec<AccessDecisionLog>,
+        scope_evaluations: Vec<ScopeEvaluation>,
     ) -> Self {
         Self::base(
             generated_at,
@@ -778,7 +771,7 @@ impl QueryResult {
             "low".to_string(),
             Vec::new(),
             Vec::new(),
-            decision_logs,
+            scope_evaluations,
             FilingCandidateMetadata::empty(scope, content_level),
         )
     }
@@ -789,7 +782,7 @@ impl QueryResult {
         scope: Option<String>,
         content_level: Option<String>,
         message: String,
-        decision_logs: Vec<AccessDecisionLog>,
+        scope_evaluations: Vec<ScopeEvaluation>,
     ) -> Self {
         Self::base(
             generated_at,
@@ -802,7 +795,7 @@ impl QueryResult {
             "low".to_string(),
             Vec::new(),
             Vec::new(),
-            decision_logs,
+            scope_evaluations,
             FilingCandidateMetadata::empty(scope, content_level),
         )
     }
@@ -816,7 +809,7 @@ impl QueryResult {
         answer: String,
         confidence: String,
         citations: Vec<QueryCitation>,
-        decision_logs: Vec<AccessDecisionLog>,
+        scope_evaluations: Vec<ScopeEvaluation>,
         filing_candidate_metadata: FilingCandidateMetadata,
     ) -> Self {
         Self::base(
@@ -830,7 +823,7 @@ impl QueryResult {
             confidence,
             citations.clone(),
             citations,
-            decision_logs,
+            scope_evaluations,
             filing_candidate_metadata,
         )
     }
@@ -848,7 +841,6 @@ impl FilingCandidateMetadata {
             reviewer: None,
             risk_owner: None,
             lifecycle: "draft".to_string(),
-            access_policy_refs: Vec::new(),
             subject_kind: None,
             subject_id: None,
         }
@@ -864,7 +856,7 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn allow_policy_and_matching_question_returns_success_without_writing_artifact() {
+    fn include_rule_and_matching_question_returns_success_without_writing_artifact() {
         let dir = tempdir().unwrap();
         fs::create_dir_all(dir.path().join("docs").join("nested")).unwrap();
         write_file(
@@ -878,8 +870,8 @@ mod tests {
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: query-allow
+retrieval_scope:
+  rule_id: query-allow
   subject:
     kind: user
     id: alice
@@ -889,7 +881,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow query
 "#,
         );
@@ -917,10 +909,6 @@ policy:
             .unwrap()
             .iter()
             .any(|value| value.as_str().unwrap() == "[Another Page](docs/nested/page.md)"));
-        assert_eq!(
-            result["filing_candidate_metadata"]["access_policy_refs"],
-            serde_json::json!(["query-allow"])
-        );
         assert!(!dir.path().join(".llmwiki").exists());
     }
 
@@ -939,8 +927,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: query-allow
+retrieval_scope:
+  rule_id: query-allow
   subject:
     kind: user
     id: alice
@@ -950,7 +938,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow query
 "#,
         );
@@ -990,8 +978,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: query-allow-jp
+retrieval_scope:
+  rule_id: query-allow-jp
   subject:
     kind: user
     id: alice
@@ -1001,7 +989,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow query
 "#,
         );
@@ -1126,8 +1114,8 @@ policy:
         write_policy_yaml(
             dir.path().join("deny.yaml"),
             r#"
-policy:
-  policy_id: query-deny
+retrieval_scope:
+  rule_id: query-deny
   subject:
     kind: user
     id: alice
@@ -1137,15 +1125,15 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: deny
+  selection: exclude
   reason: deny query
 "#,
         );
         write_policy_yaml(
             dir.path().join("allow.yaml"),
             r#"
-policy:
-  policy_id: query-allow-other
+retrieval_scope:
+  rule_id: query-allow-other
   subject:
     kind: user
     id: bob
@@ -1155,7 +1143,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow query
 "#,
         );
@@ -1215,8 +1203,8 @@ policy:
         write_policy_yaml(
             dir.path().join("hold.yaml"),
             r#"
-policy:
-  policy_id: query-hold
+retrieval_scope:
+  rule_id: query-hold
   subject:
     kind: user
     id: alice
@@ -1226,15 +1214,15 @@ policy:
   resource:
     type: concept_document
     selector: docs/a-hold.md
-  decision: hold
+  selection: hold
   reason: hold query
 "#,
         );
         write_policy_yaml(
             dir.path().join("deny.yaml"),
             r#"
-policy:
-  policy_id: query-deny
+retrieval_scope:
+  rule_id: query-deny
   subject:
     kind: user
     id: alice
@@ -1244,7 +1232,7 @@ policy:
   resource:
     type: concept_document
     selector: docs/z-deny.md
-  decision: deny
+  selection: exclude
   reason: deny query
 "#,
         );
@@ -1262,13 +1250,13 @@ policy:
 
         let result = &value["query_result"];
         assert_eq!(result["status"], "deny");
-        assert_eq!(result["decision_logs"].as_array().unwrap().len(), 2);
+        assert_eq!(result["scope_evaluations"].as_array().unwrap().len(), 2);
         assert_eq!(
-            result["decision_logs"][0]["resource"],
+            result["scope_evaluations"][0]["resource"],
             serde_json::json!("{\"type\":\"concept_document\",\"selector\":\"docs/a-hold.md\"}")
         );
         assert_eq!(
-            result["decision_logs"][1]["resource"],
+            result["scope_evaluations"][1]["resource"],
             serde_json::json!("{\"type\":\"concept_document\",\"selector\":\"docs/z-deny.md\"}")
         );
     }
@@ -1283,8 +1271,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: query-allow
+retrieval_scope:
+  rule_id: query-allow
   subject:
     kind: user
     id: alice
@@ -1294,7 +1282,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow query
 "#,
         );
@@ -1335,8 +1323,8 @@ policy:
         write_policy_yaml(
             dir.path().join("policy.yaml"),
             r#"
-policy:
-  policy_id: query-allow
+retrieval_scope:
+  rule_id: query-allow
   subject:
     kind: user
     id: alice
@@ -1346,7 +1334,7 @@ policy:
   resource:
     type: concept_document
     selector: "*"
-  decision: allow
+  selection: include
   reason: allow query
 "#,
         );

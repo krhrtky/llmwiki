@@ -24,7 +24,7 @@ related retrieval は次の責務分離で設計する。
 - Search: lexical search と将来の vector search で `llmwiki retrieve` の seed page または section を見つける。
 - Graph traversal: Markdown link と `*.llmwiki.yaml` の typed relation から derived graph index を作り、seed から relation を辿る。
 - Access filter: seed、edge、neighbor、section body の各段階で operation-aware access control を適用する。
-- Rerank / explain: 最終 context を選び、なぜ取得されたかを path と access decision で説明する。
+- Rerank / explain: 最終 context を選び、なぜ取得されたかを path と scope evaluation で説明する。
 
 初期実装は file-first derived index を使う。DB、pgvector、OpenSearch、Neo4j、GraphRAG は後続 adapter とし、Markdown / sidecar / raw source の SoT を置き換えない。
 
@@ -46,7 +46,7 @@ GraphRAG は通常 retrieval の置き換えではなく、org-level sensemaking
 ## Consequences
 
 - Positive: grep の限界を超え、関連 policy、ADR、source、FAQ を取得できる。
-- Positive: relation path と access decision を返すことで、LLM が使った知識の説明可能性が上がる。
+- Positive: relation path と scope evaluation を返すことで、LLM が使った知識の説明可能性が上がる。
 - Positive: `related` を先に固定することで、file-first を維持したまま最小の retrieval surface で実装を始められる。
 - Positive: file-first を維持したまま、PostgreSQL / pgvector / search index / graph DB へ拡張できる。
 - Positive: `retrieve` の lexical seed selection、section chunk、BM25、embedding は後続の独立した設計課題として切り出せる。
