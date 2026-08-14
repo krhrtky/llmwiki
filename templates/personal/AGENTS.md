@@ -1,7 +1,7 @@
-# LLM Wiki 運用規約
+# LLM Wiki ローカル規約
 
-このディレクトリは個人用 LLM Wiki です。LLM Agent は、以下の規約を守って
-`raw/`、`wiki/`、`.llmwiki/` を操作してください。
+このディレクトリは個人用 LLM Wiki です。共通の操作手順は `llmwiki` Agent Skill に従い、
+このファイルではこの Wiki に固有の知識モデルと不変条件を定義します。
 
 ## 境界
 
@@ -34,39 +34,15 @@ updated: "2026-08-14"
 - source page には `source_file` と `source_sha256` を追加します。前者は raw 内の
   vault-root 相対パス、後者は `llmwiki source add` が manifest に登録した SHA-256 です。
 
-## Ingest
+## ローカル分類
 
-ユーザーが原本の取り込みを依頼したら、事前承認を待たずに以下を実行します。
+- `sources/`: 原本ごとの要約と主張
+- `concepts/`: 原本をまたぐ概念・論点
+- `entities/`: 人物・組織・製品などの固有対象
+- `projects/`: 期限や目的を持つ調査・活動
+- `analyses/`: 将来も再利用する比較・回答・統合分析
 
-1. `llmwiki source add TARGET FILE...` で原本を登録する。すでに raw に登録済みなら、
-   manifest と SHA-256 を確認し、原本を変更しない。
-2. 原本と `wiki/index.md` を読み、`wiki/sources/` に source page を作成または更新する。
-   source page は原本リンク（例: `![[raw/report.pdf]]` または `![[raw/notes.txt]]`）、
-   SHA-256、`## Summary` の要約、`## Claims` の主要主張を必ず含める。
-3. 既存の concept/entity/project page を再利用・更新し、原本をまたぐ主張を統合する。
-   知識ページには source page への根拠リンクを必ず残す。
-4. 主張が矛盾する場合、どちらかを消して解決したことにしない。両方の source page と
-   主張をリンクし、ページ内の `## Contradictions` 節に不確実性または条件の違いを
-   記録する。
-5. 新しい content page を `wiki/index.md` からリンク可能にし、`wiki/log.md` に追記する。
-6. 完了時には、変更したページの一覧と、追加・更新・矛盾統合という主要な統合内容を
-   ユーザーへ提示する。
-
-## Query
-
-問い合わせでは、最初に `wiki/index.md` を読んで関連ページをたどります。根拠を
-source page と raw 原本まで追跡し、回答では不確実性と矛盾を区別します。将来も再利用
-できる新規分析だけを Agent の判断で `wiki/analyses/` に保存し、そのページにも非空の
-`sources` を設定します。保存した場合は log に追記します。
-
-## Semantic lint
-
-Agent は意味的な品質を確認します。矛盾、陳腐化、ページ化されていない重要概念、根拠や
-情報の不足を検査し、必要なら Wiki を更新またはユーザーに確認します。source page の
-Summary/Claims と knowledge page の Contradictions の内容が十分かどうかも Agent の責務です。
-CLI の
-`llmwiki check` は frontmatter、リンク、index、orphan、raw hash、log などの構造検査を
-担い、意味の正しさは判定しません。
+この分類に収まらないページを作る前に、ユーザーに分類を確認します。
 
 ## 変更ログ
 
@@ -79,8 +55,8 @@ ingest、query、lint ごとに `wiki/log.md` の末尾へ必ず次の見出し�
 `operation` は `ingest`、`query`、`lint` のいずれかです。既存のログ本文は編集、並べ替え、
 削除しません。Git 管理下では CLI が HEAD の `log.md` を基準に append-only を検証します。
 
-## 最終確認
+## ローカルな補足
 
-Wiki を編集した後は `llmwiki check TARGET` を実行し、構造診断を解消します。検索には
-`llmwiki search TARGET QUERY` を使えます。PDF や画像は Agent が原本を直接読んで扱い、
-CLI は PDF テキスト抽出・OCR・ベクトル検索を実行しません。
+- 日本語で記述します。
+- PDF や画像は Agent が原本を直接読んで扱います。CLI は PDF テキスト抽出・OCR・
+  ベクトル検索を実行しません。

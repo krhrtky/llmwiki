@@ -25,6 +25,11 @@ enum Command {
         #[command(subcommand)]
         command: SourceCommand,
     },
+    /// Install the bundled Agent Skill for Codex.
+    Skill {
+        #[command(subcommand)]
+        command: SkillCommand,
+    },
     /// Search Wiki pages and textual raw sources.
     Search { target: PathBuf, query: String },
     /// Validate Wiki structure.
@@ -43,6 +48,12 @@ enum SourceCommand {
         #[arg(num_args = 1..)]
         files: Vec<PathBuf>,
     },
+}
+
+#[derive(Debug, Subcommand)]
+enum SkillCommand {
+    /// Install or update the bundled LLM Wiki Skill.
+    Install,
 }
 
 #[derive(Clone, Copy, Debug, Default, ValueEnum)]
@@ -82,6 +93,42 @@ fn run(cli: Cli) -> Result<u8, operations::LlmwikiError> {
         } => {
             for message in operations::add_sources(&target, &files)? {
                 println!("{message}");
+            }
+            Ok(0)
+        }
+        Command::Skill {
+            command: SkillCommand::Install,
+        } => {
+            let result = operations::install_skill()?;
+            let destination = operations::codex_skill_destination()?;
+            match result {
+                operations::SkillInstallResult::Installed => {
+                    println!("Installed LLM Wiki Skill: {}", destination.display());
+                }
+                operations::SkillInstallResult::Updated { previous_version } => {
+                    match previous_version {
+                        Some(version) => println!(
+                            "Updated LLM Wiki Skill from {version} to {}: {}",
+                            operations::skill_version(),
+                            destination.display()
+                        ),
+                        None => println!(
+                            "Updated legacy LLM Wiki Skill to {}: {}",
+                            operations::skill_version(),
+                            destination.display()
+                        ),
+                    }
+                }
+                operations::SkillInstallResult::AlreadyCurrent => println!(
+                    "LLM Wiki Skill is already current ({}): {}",
+                    operations::skill_version(),
+                    destination.display()
+                ),
+                operations::SkillInstallResult::AlreadyNewer { installed_version } => println!(
+                    "Kept newer LLM Wiki Skill ({installed_version}); bundled version is {}: {}",
+                    operations::skill_version(),
+                    destination.display()
+                ),
             }
             Ok(0)
         }

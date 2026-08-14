@@ -15,6 +15,21 @@ cargo build --release
 ./target/release/llmwiki --help
 ```
 
+## Agent Skill
+
+複数のリポジトリで同じ Wiki 運用を使うための `llmwiki` Agent Skill を
+[`skills/llmwiki`](skills/llmwiki) に同梱しています。ローカル clone から Codex に
+インストールするには、CLI をインストールした後に次を実行します。
+
+```console
+llmwiki skill install
+```
+
+インストール後は、他リポジトリで `$llmwiki` を指定して Wiki の初期化、取り込み、照会、
+semantic lint を依頼できます。Skill は共通手順を担い、各 Wiki に生成される `AGENTS.md` は
+そのリポジトリ固有の分類・データ方針を担います。既存の Skill はバージョンが古い場合にだけ
+自動更新し、同一または新しいバージョンは変更しません。
+
 ローカル環境へコマンドをインストールして以後 `llmwiki` として使う場合は、リポジトリの
 ルートで次を実行します。
 
@@ -65,8 +80,9 @@ personal-wiki/
     └── manifest.json
 ```
 
-`AGENTS.md` は Agent に渡す運用規約です。`raw/` と `.llmwiki/manifest.json` を手で編集
-しないこと、取り込み・照会・semantic lint の進め方を定義しています。
+`AGENTS.md` はこの Wiki 固有の規約です。`raw/` と `.llmwiki/manifest.json` を手で編集
+しないこと、ページ分類、言語などを定義します。複数のリポジトリで共通の取り込み・照会・
+semantic lint 手順を使う場合は、`llmwiki` Agent Skill をインストールして利用します。
 
 ### 2. 原本を登録する
 
@@ -92,10 +108,10 @@ llmwiki check ~/knowledge/personal-wiki
 
 ### 3. Agent に ingest を依頼する
 
-Wiki 直下の `AGENTS.md` と対象の raw 原本を Agent に渡し、次のように依頼します。
+`llmwiki` Agent Skill と Wiki 直下の `AGENTS.md` に従うよう、次のように依頼します。
 
 ```text
-AGENTS.md に従って raw/remote-work.md を ingest してください。
+`$llmwiki` を使い、AGENTS.md に従って raw/remote-work.md を ingest してください。
 既存の index を先に確認し、source page と必要な knowledge page を更新してください。
 完了時は変更ページと統合内容を報告してください。
 ```
@@ -177,7 +193,7 @@ query では必ず index を最初に読み、関連ページと source page、�
 たどります。再利用価値がある新規分析だけを Agent の判断で `wiki/analyses/` に保存します。
 
 ```text
-AGENTS.md に従って「在宅勤務は満足度を改善するか」を query してください。
+`$llmwiki` を使い、AGENTS.md に従って「在宅勤務は満足度を改善するか」を query してください。
 index と根拠を確認し、再利用価値がある新規分析だけを analyses/ に保存してください。
 ```
 
@@ -186,7 +202,7 @@ semantic lint は CLI ではなく Agent が担います。矛盾、陳腐化、
 内容として十分かどうかも Agent が判断します。
 
 ```text
-AGENTS.md に従って semantic lint を実行し、矛盾・陳腐化・未ページ化概念・情報不足を確認してください。
+`$llmwiki` を使い、AGENTS.md に従って semantic lint を実行し、矛盾・陳腐化・未ページ化概念・情報不足を確認してください。
 必要な更新と、判断できない点を報告してください。
 ```
 

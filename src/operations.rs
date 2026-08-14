@@ -1,4 +1,6 @@
+use std::cmp::Ordering;
 use std::collections::BTreeSet;
+use std::env;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -13,8 +15,12 @@ use walkdir::WalkDir;
 use crate::validation::{content_markdown_files, parse_frontmatter, relative_posix};
 
 static PERSONAL_TEMPLATE: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/templates/personal");
+static SKILL_TEMPLATE: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/skills/llmwiki");
 
 pub const TEXTUAL_RAW_EXTENSIONS: [&str; 2] = ["md", "txt"];
+const SKILL_NAME: &str = "llmwiki";
+const SKILL_VERSION_FILE: &str = ".llmwiki-version";
+const SKILL_VERSION: &str = env!("CARGO_PKG_VERSION");
 const SUPPORTED_SOURCE_EXTENSIONS: [&str; 9] = [
     "md", "txt", "pdf", "png", "jpg", "jpeg", "webp", "gif", "svg",
 ];
@@ -36,6 +42,14 @@ pub struct SearchResult {
     path: String,
     line: usize,
     snippet: String,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum SkillInstallResult {
+    Installed,
+    Updated { previous_version: Option<String> },
+    AlreadyCurrent,
+    AlreadyNewer { installed_version: String },
 }
 
 impl std::fmt::Display for SearchResult {
@@ -65,6 +79,88 @@ pub fn initialize(target: &Path) -> Result<(), LlmwikiError> {
     fs::create_dir_all(target)?;
     copy_embedded_dir(&PERSONAL_TEMPLATE, target)?;
     ensure_initial_layout(target)
+}
+
+pub fn skill_version() -> &'static str {
+    SKILL_VERSION
+}
+
+pub fn codex_skill_destination() -> Result<PathBuf, LlmwikiError> {
+    let codex_home = env::var_os("CODEX_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))
+        .ok_or_else(|| user_error("cannot determine Codex home; set CODEX_HOME"))?;
+    Ok(codex_home.join("skills").join(SKILL_NAME))
+}
+
+pub fn install_skill() -> Result<SkillInstallResult, LlmwikiError> {
+    let destination = codex_skill_destination()?;
+    let skills_directory = destination
+        .parent()
+        .ok_or_else(|| user_error("invalid Codex Skill destination"))?;
+    install_skill_to(skills_directory)
+}
+
+fn install_skill_to(skills_directory: &Path) -> Result<SkillInstallResult, LlmwikiError> {
+    fs::create_dir_all(skills_directory)?;
+    let destination = skills_directory.join(SKILL_NAME);
+    if destination.exists() && !fs::symlink_metadata(&destination)?.file_type().is_dir() {
+        return Err(user_error(format!(
+            "existing Skill path is not a directory: {}",
+            destination.display()
+        )));
+    }
+    let installed_version = installed_skill_version(&destination)?;
+
+    if let Some(version) = installed_version.as_deref() {
+        match compare_versions(version, SKILL_VERSION) {
+            Some(Ordering::Equal) => return Ok(SkillInstallResult::AlreadyCurrent),
+            Some(Ordering::Greater) => {
+                return Ok(SkillInstallResult::AlreadyNewer {
+                    installed_version: version.to_owned(),
+                });
+            }
+            Some(Ordering::Less) | None => {}
+        }
+    }
+
+    let staging = tempfile::Builder::new()
+        .prefix(".llmwiki-skill-")
+        .tempdir_in(skills_directory)?;
+    let staged_skill = staging.path().join(SKILL_NAME);
+    copy_embedded_dir(&SKILL_TEMPLATE, &staged_skill)?;
+    fs::write(
+        staged_skill.join(SKILL_VERSION_FILE),
+        format!("{SKILL_VERSION}\n"),
+    )?;
+
+    if !destination.exists() {
+        fs::rename(&staged_skill, &destination)?;
+        return Ok(SkillInstallResult::Installed);
+    }
+
+    let backup = skills_directory.join(".llmwiki-skill-backup");
+    if backup.exists() {
+        return Err(user_error(format!(
+            "cannot update Skill while backup exists: {}",
+            backup.display()
+        )));
+    }
+    fs::rename(&destination, &backup)?;
+    if let Err(error) = fs::rename(&staged_skill, &destination) {
+        let rollback = fs::rename(&backup, &destination);
+        return match rollback {
+            Ok(()) => Err(error.into()),
+            Err(rollback_error) => Err(user_error(format!(
+                "cannot install Skill: {error}; rollback also failed: {rollback_error}"
+            ))),
+        };
+    }
+    fs::remove_dir_all(&backup)?;
+    Ok(SkillInstallResult::Updated {
+        previous_version: installed_version,
+    })
 }
 
 pub fn add_sources(target: &Path, files: &[PathBuf]) -> Result<Vec<String>, LlmwikiError> {
@@ -223,6 +319,32 @@ pub fn is_ignored(path: &Path) -> bool {
 
 fn user_error(message: impl Into<String>) -> LlmwikiError {
     LlmwikiError::User(message.into())
+}
+
+fn installed_skill_version(destination: &Path) -> Result<Option<String>, LlmwikiError> {
+    if !destination.exists() {
+        return Ok(None);
+    }
+    let version_path = destination.join(SKILL_VERSION_FILE);
+    match fs::read_to_string(&version_path) {
+        Ok(version) => Ok(Some(version.trim().to_owned())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn compare_versions(left: &str, right: &str) -> Option<Ordering> {
+    Some(parse_version(left)?.cmp(&parse_version(right)?))
+}
+
+fn parse_version(version: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = version.split('.').map(str::parse::<u64>);
+    let parsed = (
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+    );
+    parts.next().is_none().then_some(parsed)
 }
 
 fn copy_embedded_dir(directory: &Dir<'_>, destination: &Path) -> Result<(), LlmwikiError> {

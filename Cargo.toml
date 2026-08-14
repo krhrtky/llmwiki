@@ -1,6 +1,6 @@
 [package]
 name = "llmwiki"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Personal LLM Wiki initializer and structural verifier"
 license = "MIT"
@@ -10,6 +10,7 @@ include = [
     "README.md",
     "rust-toolchain.toml",
     "src/**",
+    "skills/llmwiki/**",
     "templates/personal/**",
     "templates/personal/.llmwiki/manifest.json",
     "templates/personal/raw/.gitkeep",
@@ -29,10 +30,10 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 sha2 = "0.10"
 thiserror = "2.0"
+tempfile = "3.12"
 unicode-casefold = "0.2"
 walkdir = "2.5"
 
 [dev-dependencies]
 assert_cmd = "2.0"
 predicates = "3.1"
-tempfile = "3.12"

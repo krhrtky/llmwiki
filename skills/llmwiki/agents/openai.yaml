@@ -1,0 +1,4 @@
+interface:
+  display_name: "LLM Wiki"
+  short_description: "Maintain repository knowledge with llmwiki."
+  default_prompt: "Use $llmwiki to ingest sources and maintain this repository knowledge wiki."

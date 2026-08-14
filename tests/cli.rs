@@ -28,6 +28,55 @@ fn init_creates_a_wiki_that_passes_check() {
 }
 
 #[test]
+fn skill_install_replaces_an_older_skill_without_downgrading_a_newer_one() {
+    let temporary = tempdir().expect("temporary directory");
+    let codex_home = temporary.path().join("codex-home");
+    let skill = codex_home.join("skills/llmwiki");
+    let current_version = env!("CARGO_PKG_VERSION");
+
+    llmwiki()
+        .env("CODEX_HOME", &codex_home)
+        .args(["skill", "install"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Installed LLM Wiki Skill"));
+    assert!(skill.join("SKILL.md").is_file());
+    assert_eq!(
+        fs::read_to_string(skill.join(".llmwiki-version")).unwrap(),
+        format!("{current_version}\n")
+    );
+
+    fs::write(skill.join(".llmwiki-version"), "0.0.0\n").unwrap();
+    fs::write(skill.join("SKILL.md"), "old skill").unwrap();
+    llmwiki()
+        .env("CODEX_HOME", &codex_home)
+        .args(["skill", "install"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(format!(
+            "Updated LLM Wiki Skill from 0.0.0 to {current_version}",
+        )));
+    assert!(fs::read_to_string(skill.join("SKILL.md"))
+        .unwrap()
+        .contains("Maintain persistent, source-backed LLM Wikis"));
+
+    fs::write(skill.join(".llmwiki-version"), "999.0.0\n").unwrap();
+    fs::write(skill.join("SKILL.md"), "newer skill").unwrap();
+    llmwiki()
+        .env("CODEX_HOME", &codex_home)
+        .args(["skill", "install"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "Kept newer LLM Wiki Skill (999.0.0)",
+        ));
+    assert_eq!(
+        fs::read_to_string(skill.join("SKILL.md")).unwrap(),
+        "newer skill"
+    );
+}
+
+#[test]
 fn source_add_is_idempotent_and_preflights_name_collisions() {
     let temporary = tempdir().expect("temporary directory");
     let target = temporary.path().join("wiki");
